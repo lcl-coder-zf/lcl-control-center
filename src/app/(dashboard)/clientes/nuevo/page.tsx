@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
-const SERVICIOS = ['BASC', 'ISO', 'SAGRILAFT', 'SARLAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Otro']
+const SERVICIOS = ['Asesoría BASC', 'ISO', 'SAGRILAFT', 'SARLAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Asesoría Legal', 'Otro']
 const SECTORES = ['Transporte', 'Transporte Terrestre', 'Transporte de Pasajeros', 'Operador Logístico', 'Agente de Carga', 'Agente de Carga Internacional', 'Logística', 'Comercio', 'Comercialización de Metales Preciosos', 'Venta de Lotes', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Otro']
 
 export default function NuevoClientePage() {
