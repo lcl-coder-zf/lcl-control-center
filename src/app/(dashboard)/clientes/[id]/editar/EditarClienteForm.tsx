@@ -8,7 +8,7 @@ import Link from 'next/link'
 import type { Company } from '@/types'
 
 const SERVICIOS = ['BASC', 'ISO', 'SAGRILAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Otro']
-const SECTORES = ['Transporte', 'Transporte Terrestre', 'Logística', 'Comercio', 'Manufactura', 'Servicios', 'Inversiones', 'Otro']
+const SECTORES = ['Transporte', 'Transporte Terrestre', 'Logística', 'Comercio', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Otro']
 
 export default function EditarClienteForm({ company }: { company: Company }) {
   const router = useRouter()
