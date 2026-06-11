@@ -7,7 +7,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
 const SERVICIOS = ['BASC', 'ISO', 'SAGRILAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Otro']
-const SECTORES = ['Transporte', 'Transporte Terrestre', 'Transporte de Pasajeros', 'Operador Logístico', 'Agente de Carga', 'Logística', 'Comercio', 'Venta de Lotes', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Otro']
+const SECTORES = ['Transporte', 'Transporte Terrestre', 'Transporte de Pasajeros', 'Operador Logístico', 'Agente de Carga', 'Agente de Carga Internacional', 'Logística', 'Comercio', 'Comercialización de Metales Preciosos', 'Venta de Lotes', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Otro']
 
 export default function NuevoClientePage() {
   const router = useRouter()

@@ -8,7 +8,7 @@ import Link from 'next/link'
 import type { Company } from '@/types'
 
 const SERVICIOS = ['BASC', 'ISO', 'SAGRILAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Otro']
-const SECTORES = ['Transporte', 'Transporte Terrestre', 'Transporte de Pasajeros', 'Operador Logístico', 'Agente de Carga', 'Logística', 'Comercio', 'Venta de Lotes', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Otro']
+const SECTORES = ['Transporte', 'Transporte Terrestre', 'Transporte de Pasajeros', 'Operador Logístico', 'Agente de Carga', 'Agente de Carga Internacional', 'Logística', 'Comercio', 'Comercialización de Metales Preciosos', 'Venta de Lotes', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Otro']
 
 export default function EditarClienteForm({ company }: { company: Company }) {
   const router = useRouter()
