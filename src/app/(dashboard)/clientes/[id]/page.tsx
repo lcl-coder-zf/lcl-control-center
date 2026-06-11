@@ -46,7 +46,7 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
             </div>
             {Array.isArray(company.service_type) && company.service_type.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-1">
-                {company.service_type.map(s => (
+                {company.service_type.map((s: string) => (
                   <span key={s} className="text-xs px-2 py-0.5 rounded-full"
                     style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>{s}</span>
                 ))}
