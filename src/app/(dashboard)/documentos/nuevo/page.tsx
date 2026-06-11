@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Upload, X, FileText } from 'lucide-react'
 import Link from 'next/link'
 
 const TIPOS_DOC = ['Política', 'Procedimiento', 'Manual', 'Certificado', 'Acta', 'Evidencia', 'Contrato', 'Formato', 'Reporte', 'Otro']
@@ -14,9 +14,11 @@ export default function NuevoDocumentoPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [form, setForm] = useState({
     name: '', type: 'Procedimiento', company_id: '', project_id: '',
-    status: 'pendiente', file_url: '', version: '1.0', expires_at: '',
+    status: 'pendiente', version: '1.0', expires_at: '',
   })
 
   useEffect(() => {
@@ -42,11 +44,31 @@ export default function NuevoDocumentoPage() {
     })
   }
 
+  async function uploadFile(file: File): Promise<string | null> {
+    const supabase = createClient()
+    const ext = file.name.split('.').pop()
+    const folder = form.company_id || 'general'
+    const filename = `${folder}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+    const { data, error } = await supabase.storage.from('documents').upload(filename, file)
+    if (error) { setError('Error al subir archivo: ' + error.message); return null }
+    const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(data.path)
+    return publicUrl
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) { setError('El nombre es obligatorio'); return }
     setLoading(true)
     setError('')
+
+    let file_url: string | null = null
+
+    if (file) {
+      setUploading(true)
+      file_url = await uploadFile(file)
+      setUploading(false)
+      if (!file_url) { setLoading(false); return }
+    }
 
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -56,7 +78,7 @@ export default function NuevoDocumentoPage() {
       company_id: form.company_id || null,
       project_id: form.project_id || null,
       status: form.status,
-      file_url: form.file_url || null,
+      file_url,
       version: form.version || '1.0',
       expires_at: form.expires_at || null,
       uploaded_by: user?.id,
@@ -97,7 +119,42 @@ export default function NuevoDocumentoPage() {
             <Fi label="Versión" value={form.version} onChange={v => set('version', v)} placeholder="1.0" />
             <Fi label="Fecha de vencimiento" value={form.expires_at} onChange={v => set('expires_at', v)} type="date" />
           </div>
-          <Fi label="URL del archivo (opcional)" value={form.file_url} onChange={v => set('file_url', v)} placeholder="https://drive.google.com/..." />
+        </Card>
+
+        <Card label="Archivo">
+          {file ? (
+            <div className="flex items-center gap-3 p-4 rounded-xl"
+              style={{ background: 'rgba(64,181,250,0.06)', border: '1px solid rgba(64,181,250,0.20)' }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }}>
+                <FileText className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{file.name}</p>
+                <p className="text-xs" style={{ color: '#6b8fa0' }}>{(file.size / 1024).toFixed(0)} KB</p>
+              </div>
+              <button type="button" onClick={() => setFile(null)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ background: 'rgba(255,107,107,0.10)', color: '#ff6b6b' }}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl cursor-pointer transition-all"
+              style={{ background: '#f4f7fa', border: '2px dashed rgba(0,40,80,0.12)' }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setFile(f) }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>
+                <Upload className="w-5 h-5" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium" style={{ color: '#1a2e3b' }}>Arrastra un archivo o haz clic para seleccionar</p>
+                <p className="text-xs mt-1" style={{ color: '#6b8fa0' }}>PDF, Word, Excel, imágenes — máx. 50 MB</p>
+              </div>
+              <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setFile(f) }} />
+            </label>
+          )}
         </Card>
 
         <Card label="Vincular a (opcional)">
@@ -126,7 +183,9 @@ export default function NuevoDocumentoPage() {
           <button type="submit" disabled={loading}
             className="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
             style={{ background: '#40b5fa', color: '#ffffff' }}>
-            {loading ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando...</> : 'Guardar documento'}
+            {loading
+              ? <><Loader2 className="w-4 h-4 animate-spin" />{uploading ? 'Subiendo archivo...' : 'Guardando...'}</>
+              : 'Guardar documento'}
           </button>
         </div>
       </form>
