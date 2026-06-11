@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2, Camera } from 'lucide-react'
 import Link from 'next/link'
-import Image from 'next/image'
 
 const SERVICIOS = ['Asesoría BASC', 'ISO', 'SAGRILAFT', 'SARLAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Asesoría Legal', 'Diplomado en Vivo', 'Diplomado Virtual', 'Seminarios', 'Capacitaciones', 'Otro']
 const SECTORES = ['Transporte', 'Transporte Terrestre', 'Transporte de Pasajeros', 'Operador Logístico', 'Agente de Carga', 'Agente de Carga Internacional', 'Logística', 'Comercio', 'Comercialización de Metales Preciosos', 'Venta de Lotes', 'Construcción', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Académico', 'Otro']
@@ -101,7 +100,7 @@ export default function NuevoClientePage() {
               <div className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center font-black text-xl"
                 style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }}>
                 {logoPreview
-                  ? <Image src={logoPreview} alt="logo" width={64} height={64} className="w-full h-full object-cover" />
+                  ? <img src={logoPreview} alt="logo" className="w-full h-full object-contain p-0.5" />
                   : (form.name ? form.name.slice(0, 2).toUpperCase() : 'LC')}
               </div>
               <label className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"

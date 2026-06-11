@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { Building2, MapPin, Phone, ChevronRight } from 'lucide-react'
+import { CompanyAvatar } from '@/components/ui/CompanyAvatar'
 import type { Company } from '@/types'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -40,13 +40,7 @@ export default function ClientesList({ companies }: { companies: Company[] }) {
               e.currentTarget.style.background = '#ffffff'
             }}>
 
-            {/* Logo o iniciales */}
-            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 text-sm font-black"
-              style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }}>
-              {c.logo_url
-                ? <Image src={c.logo_url} alt={c.name} width={40} height={40} className="w-full h-full object-cover" />
-                : c.name.slice(0, 2).toUpperCase()}
-            </div>
+            <CompanyAvatar name={c.name} logoUrl={c.logo_url} size={40} />
 
             {/* Info */}
             <div className="flex-1 min-w-0">
