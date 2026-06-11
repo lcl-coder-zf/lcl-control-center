@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Camera } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 const SERVICIOS = ['Asesoría BASC', 'ISO', 'SAGRILAFT', 'SARLAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Asesoría Legal', 'Diplomado en Vivo', 'Diplomado Virtual', 'Seminarios', 'Capacitaciones', 'Otro']
 const SECTORES = ['Transporte', 'Transporte Terrestre', 'Transporte de Pasajeros', 'Operador Logístico', 'Agente de Carga', 'Agente de Carga Internacional', 'Logística', 'Comercio', 'Comercialización de Metales Preciosos', 'Venta de Lotes', 'Construcción', 'Manufactura', 'Servicios', 'Inversiones', 'Arrendamientos', 'Académico', 'Otro']
@@ -13,6 +14,8 @@ export default function NuevoClientePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '', nit: '', sector: '', city: '',
     contact_name: '', contact_email: '', contact_phone: '',
@@ -21,6 +24,23 @@ export default function NuevoClientePage() {
 
   function set(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setLogoFile(f)
+    setLogoPreview(URL.createObjectURL(f))
+  }
+
+  async function uploadLogo(file: File): Promise<string | null> {
+    const supabase = createClient()
+    const ext = file.name.split('.').pop()
+    const path = `${Date.now()}.${ext}`
+    const { data, error } = await supabase.storage.from('logos').upload(path, file, { upsert: true })
+    if (error) return null
+    const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(data.path)
+    return publicUrl
   }
 
   function toggleServicio(s: string) {
@@ -39,11 +59,15 @@ export default function NuevoClientePage() {
     setError('')
 
     const supabase = createClient()
+    let logo_url: string | null = null
+    if (logoFile) logo_url = await uploadLogo(logoFile)
+
     const { error } = await supabase.from('companies').insert([{
       name: form.name, nit: form.nit, sector: form.sector, city: form.city,
       contact_name: form.contact_name, contact_email: form.contact_email, contact_phone: form.contact_phone,
       service_type: form.service_type,
       monthly_hours: form.monthly_hours ? parseInt(form.monthly_hours) : null,
+      logo_url,
       status: form.status, notes: form.notes,
     }])
 
@@ -70,6 +94,28 @@ export default function NuevoClientePage() {
         <div className="rounded-2xl p-6 space-y-4"
           style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
           <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#40b5fa' }}>Datos de la empresa</p>
+
+          {/* Logo upload */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center font-black text-xl"
+                style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }}>
+                {logoPreview
+                  ? <Image src={logoPreview} alt="logo" width={64} height={64} className="w-full h-full object-cover" />
+                  : (form.name ? form.name.slice(0, 2).toUpperCase() : 'LC')}
+              </div>
+              <label className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
+                style={{ background: '#40b5fa' }}>
+                <Camera className="w-3 h-3 text-white" />
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+              </label>
+            </div>
+            <div>
+              <p className="text-sm font-medium" style={{ color: '#1a2e3b' }}>Logo de la empresa</p>
+              <p className="text-xs mt-0.5" style={{ color: '#6b8fa0' }}>PNG, JPG — recomendado 200×200px</p>
+            </div>
+          </div>
+
           <Field label="Nombre *" value={form.name} onChange={v => set('name', v)} placeholder="Ej: Transportes Jamar S.A.S" />
           <div className="grid grid-cols-2 gap-4">
             <Field label="NIT" value={form.nit} onChange={v => set('nit', v)} placeholder="900.123.456-7" />

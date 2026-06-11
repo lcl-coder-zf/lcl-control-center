@@ -20,6 +20,7 @@ export interface Company {
   contact_phone: string
   service_type: string[]
   monthly_hours?: number
+  logo_url?: string
   status: 'activo' | 'inactivo' | 'suspendido'
   notes?: string
   created_at: string

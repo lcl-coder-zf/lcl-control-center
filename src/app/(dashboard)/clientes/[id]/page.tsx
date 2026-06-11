@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { ArrowLeft, Building2, Mail, Phone, MapPin, FileText, FolderKanban, CheckSquare } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import ClienteActions from './ClienteActions'
@@ -34,9 +35,11 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
           <Link href="/clientes" className="p-2 rounded-xl" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg"
+          <div className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center font-black text-lg"
             style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>
-            {company.name.slice(0, 2).toUpperCase()}
+            {company.logo_url
+              ? <Image src={company.logo_url} alt={company.name} width={48} height={48} className="w-full h-full object-cover" />
+              : company.name.slice(0, 2).toUpperCase()}
           </div>
           <div>
             <div className="flex items-center gap-2">
