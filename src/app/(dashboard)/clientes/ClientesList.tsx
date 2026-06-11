@@ -61,12 +61,12 @@ export default function ClientesList({ companies }: { companies: Company[] }) {
                     <MapPin className="w-3 h-3" />{c.city}
                   </span>
                 )}
-                {c.service_type && (
-                  <span className="text-xs px-2 py-0.5 rounded-full"
+                {Array.isArray(c.service_type) && c.service_type.length > 0 && c.service_type.map(s => (
+                  <span key={s} className="text-xs px-2 py-0.5 rounded-full"
                     style={{ background: 'rgba(64,181,250,0.08)', color: '#40b5fa' }}>
-                    {c.service_type}
+                    {s}
                   </span>
-                )}
+                ))}
                 {c.contact_phone && (
                   <span className="flex items-center gap-1 text-xs" style={{ color: '#6b8fa0' }}>
                     <Phone className="w-3 h-3" />{c.contact_phone}

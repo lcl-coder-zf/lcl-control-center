@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
-const SERVICIOS = ['BASC', 'ISO', 'SAGRILAFT', 'PTEE', 'SG-SST', 'Múltiples', 'Otro']
-const SECTORES = ['Transporte', 'Logística', 'Comercio', 'Manufactura', 'Servicios', 'Inversiones', 'Otro']
+const SERVICIOS = ['BASC', 'ISO', 'SAGRILAFT', 'PTEE', 'SG-SST', 'Oficial de Cumplimiento', 'Otro']
+const SECTORES = ['Transporte', 'Transporte Terrestre', 'Logística', 'Comercio', 'Manufactura', 'Servicios', 'Inversiones', 'Otro']
 
 export default function NuevoClientePage() {
   const router = useRouter()
@@ -16,11 +16,20 @@ export default function NuevoClientePage() {
   const [form, setForm] = useState({
     name: '', nit: '', sector: '', city: '',
     contact_name: '', contact_email: '', contact_phone: '',
-    service_type: '', status: 'activo', notes: '',
+    service_type: [] as string[], monthly_hours: '', status: 'activo', notes: '',
   })
 
   function set(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  function toggleServicio(s: string) {
+    setForm(prev => ({
+      ...prev,
+      service_type: prev.service_type.includes(s)
+        ? prev.service_type.filter(x => x !== s)
+        : [...prev.service_type, s],
+    }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -30,7 +39,13 @@ export default function NuevoClientePage() {
     setError('')
 
     const supabase = createClient()
-    const { error } = await supabase.from('companies').insert([form])
+    const { error } = await supabase.from('companies').insert([{
+      name: form.name, nit: form.nit, sector: form.sector, city: form.city,
+      contact_name: form.contact_name, contact_email: form.contact_email, contact_phone: form.contact_phone,
+      service_type: form.service_type,
+      monthly_hours: form.monthly_hours ? parseInt(form.monthly_hours) : null,
+      status: form.status, notes: form.notes,
+    }])
 
     if (error) { setError('Error al guardar: ' + error.message); setLoading(false); return }
     router.push('/clientes')
@@ -51,32 +66,59 @@ export default function NuevoClientePage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Sección empresa */}
+        {/* Empresa */}
         <div className="rounded-2xl p-6 space-y-4"
           style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-          <p className="text-xs font-semibold tracking-widest uppercase mb-4" style={{ color: '#40b5fa' }}>
-            Datos de la empresa
-          </p>
-
-          <Field label="Nombre *" value={form.name} onChange={v => set('name', v)} placeholder="Ej: Colfletar SAS" />
+          <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#40b5fa' }}>Datos de la empresa</p>
+          <Field label="Nombre *" value={form.name} onChange={v => set('name', v)} placeholder="Ej: Transportes Jamar S.A.S" />
           <div className="grid grid-cols-2 gap-4">
             <Field label="NIT" value={form.nit} onChange={v => set('nit', v)} placeholder="900.123.456-7" />
             <Field label="Ciudad" value={form.city} onChange={v => set('city', v)} placeholder="Bogotá" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Select label="Sector" value={form.sector} onChange={v => set('sector', v)} options={SECTORES} />
-            <Select label="Servicio contratado" value={form.service_type} onChange={v => set('service_type', v)} options={SERVICIOS} />
+            <Select label="Estado" value={form.status} onChange={v => set('status', v)} options={['activo', 'inactivo', 'suspendido']} />
           </div>
-          <Select label="Estado" value={form.status} onChange={v => set('status', v)}
-            options={['activo', 'inactivo', 'suspendido']} />
+        </div>
+
+        {/* Servicios contratados */}
+        <div className="rounded-2xl p-6 space-y-3"
+          style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+          <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#40b5fa' }}>
+            Servicios contratados
+            {form.service_type.length > 0 && (
+              <span className="ml-2 normal-case font-normal" style={{ color: '#6b8fa0' }}>
+                ({form.service_type.length} seleccionado{form.service_type.length > 1 ? 's' : ''})
+              </span>
+            )}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {SERVICIOS.map(s => {
+              const active = form.service_type.includes(s)
+              return (
+                <button key={s} type="button" onClick={() => toggleServicio(s)}
+                  className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium text-left transition-all"
+                  style={{
+                    background: active ? 'rgba(64,181,250,0.12)' : '#f4f7fa',
+                    border: `1px solid ${active ? 'rgba(64,181,250,0.35)' : 'rgba(0,40,80,0.08)'}`,
+                    color: active ? '#40b5fa' : '#6b8fa0',
+                  }}>
+                  <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                    style={{ background: active ? '#40b5fa' : 'rgba(0,40,80,0.08)', color: active ? '#fff' : 'transparent' }}>
+                    ✓
+                  </span>
+                  {s}
+                </button>
+              )
+            })}
+          </div>
+          <Field label="Dedicación mensual (horas)" value={form.monthly_hours} onChange={v => set('monthly_hours', v)} placeholder="Ej: 32" type="number" />
         </div>
 
         {/* Contacto */}
         <div className="rounded-2xl p-6 space-y-4"
           style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-          <p className="text-xs font-semibold tracking-widest uppercase mb-4" style={{ color: '#40b5fa' }}>
-            Contacto principal
-          </p>
+          <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#40b5fa' }}>Contacto principal</p>
           <Field label="Nombre del contacto" value={form.contact_name} onChange={v => set('contact_name', v)} placeholder="Nombre completo" />
           <div className="grid grid-cols-2 gap-4">
             <Field label="Email" value={form.contact_email} onChange={v => set('contact_email', v)} placeholder="contacto@empresa.com" type="email" />
@@ -88,10 +130,10 @@ export default function NuevoClientePage() {
         <div className="rounded-2xl p-6"
           style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
           <label className="block text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: '#6b8fa0' }}>
-            Observaciones
+            Observaciones adicionales
           </label>
           <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-            rows={3} placeholder="Notas internas sobre este cliente..."
+            rows={3} placeholder="Modalidad de sesiones, observaciones relevantes..."
             className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
             style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
         </div>
@@ -124,9 +166,7 @@ function Field({ label, value, onChange, placeholder, type = 'text' }: {
 }) {
   return (
     <div>
-      <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>
-        {label}
-      </label>
+      <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all"
         style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }}
@@ -141,9 +181,7 @@ function Select({ label, value, onChange, options }: {
 }) {
   return (
     <div>
-      <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>
-        {label}
-      </label>
+      <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)}
         className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
         style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }}>

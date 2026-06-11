@@ -44,8 +44,13 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
                 style={{ background: st.bg, color: st.color }}>{st.label}</span>
             </div>
-            {company.service_type && (
-              <p className="text-sm mt-0.5" style={{ color: '#6b8fa0' }}>{company.service_type}</p>
+            {Array.isArray(company.service_type) && company.service_type.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {company.service_type.map(s => (
+                  <span key={s} className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>{s}</span>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -61,7 +66,10 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
               {company.nit && <InfoRow label="NIT" value={company.nit} />}
               {company.sector && <InfoRow label="Sector" value={company.sector} />}
               {company.city && <InfoRow label="Ciudad" icon={<MapPin className="w-3.5 h-3.5" />} value={company.city} />}
-              {company.service_type && <InfoRow label="Servicio" value={company.service_type} />}
+              {Array.isArray(company.service_type) && company.service_type.length > 0 && (
+                <InfoRow label="Servicios" value={company.service_type.join(', ')} />
+              )}
+              {company.monthly_hours && <InfoRow label="Horas/mes" value={`${company.monthly_hours}h`} />}
               <InfoRow label="Desde" value={formatDate(company.created_at)} />
             </div>
           </div>

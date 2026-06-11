@@ -18,7 +18,8 @@ export interface Company {
   contact_name: string
   contact_email: string
   contact_phone: string
-  service_type: string
+  service_type: string[]
+  monthly_hours?: number
   status: 'activo' | 'inactivo' | 'suspendido'
   notes?: string
   created_at: string
