@@ -37,7 +37,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
   const services: string[] = Array.isArray(project.companies?.service_type) ? project.companies.service_type : []
 
   return (
-    <div className="p-8">
+    <div className="p-4 lg:p-8">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-start gap-4">

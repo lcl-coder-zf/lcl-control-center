@@ -89,7 +89,7 @@ export default function DocumentosPage() {
   if (loading) return <PageSkeleton />
 
   return (
-    <div className="p-8">
+    <div className="p-4 lg:p-8">
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>

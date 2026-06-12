@@ -58,7 +58,7 @@ export default function TareasPage() {
   if (loading) return <PageSkeleton />
 
   return (
-    <div className="p-8">
+    <div className="p-4 lg:p-8">
       <div className="flex items-start justify-between mb-8">
         <div>
           <p className="text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: '#40b5fa' }}>Módulo 03</p>

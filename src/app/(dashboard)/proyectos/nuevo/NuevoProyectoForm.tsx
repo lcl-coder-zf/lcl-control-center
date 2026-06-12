@@ -65,7 +65,7 @@ export default function NuevoProyectoForm({ companies, profiles, defaultClienteI
   const selectedCompany = companies.find(c => c.id === form.company_id)
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-4 lg:p-8 max-w-2xl">
       <div className="flex items-center gap-3 mb-8">
         <Link href="/proyectos" className="p-2 rounded-xl"
           style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
