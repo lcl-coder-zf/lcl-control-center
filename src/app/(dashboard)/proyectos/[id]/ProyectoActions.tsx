@@ -11,9 +11,11 @@ export default function ProyectoActions({ id }: { id: string }) {
   const [deleting, setDeleting] = useState(false)
 
   async function handleDelete() {
-    if (!confirm('¿Eliminar este proyecto y todas sus tareas?')) return
+    if (!confirm('¿Eliminar este proyecto y todas sus tareas y documentos?')) return
     setDeleting(true)
     const supabase = createClient()
+    await supabase.from('tasks').delete().eq('project_id', id)
+    await supabase.from('documents').delete().eq('project_id', id)
     await supabase.from('projects').delete().eq('id', id)
     router.push('/proyectos')
     router.refresh()

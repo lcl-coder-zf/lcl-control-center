@@ -10,7 +10,7 @@ export default async function NuevoProyectoPage({
   const supabase = await createClient()
 
   const [{ data: companies }, { data: profiles }] = await Promise.all([
-    supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
+    supabase.from('companies').select('id, name, service_type').eq('status', 'activo').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
   ])
 

@@ -1,5 +1,12 @@
 export type UserRole = 'admin' | 'consultant'
 
+export const ROLE_LABELS: Record<string, string> = {
+  'daniel@lcl.com': 'Desarrollador',
+  'laura@lcl.com':  'Directora de Proyectos',
+  'camila@lcl.com': 'Analista de Proyectos',
+  'ximena@lcl.com': 'Analista de Proyectos',
+}
+
 export interface Profile {
   id: string
   email: string

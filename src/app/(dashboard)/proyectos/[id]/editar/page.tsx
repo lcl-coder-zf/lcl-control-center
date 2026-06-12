@@ -8,7 +8,7 @@ export default async function EditarProyectoPage({ params }: { params: Promise<{
 
   const [{ data: project }, { data: companies }, { data: profiles }] = await Promise.all([
     supabase.from('projects').select('*').eq('id', id).single(),
-    supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
+    supabase.from('companies').select('id, name, service_type').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
   ])
 

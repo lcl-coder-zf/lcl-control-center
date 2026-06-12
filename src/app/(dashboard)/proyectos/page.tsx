@@ -7,33 +7,23 @@ import ProyectosList from './ProyectosList'
 import { createClient } from '@/lib/supabase/client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 
-const TIPOS = ['BASC', 'ISO', 'SAGRILAFT', 'PTEE', 'SG-SST', 'Otro']
-
 export default function ProyectosPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('todos')
-  const [tipo, setTipo] = useState('todos')
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase
+    createClient()
       .from('projects')
-      .select('*, companies(id, name), profiles(id, full_name)')
+      .select('*, companies(id, name, logo_url, service_type), profiles(id, full_name)')
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setProjects(data ?? [])
-        setLoading(false)
-      })
+      .then(({ data }) => { setProjects(data ?? []); setLoading(false) })
   }, [])
 
-  const filtered = useMemo(() => {
-    return projects.filter(p => {
-      const matchStatus = status === 'todos' || p.status === status
-      const matchTipo = tipo === 'todos' || p.type === tipo
-      return matchStatus && matchTipo
-    })
-  }, [projects, status, tipo])
+  const filtered = useMemo(() =>
+    projects.filter(p => status === 'todos' || p.status === status),
+    [projects, status]
+  )
 
   const counts = {
     activo:     projects.filter(p => p.status === 'activo').length,
@@ -72,33 +62,18 @@ export default function ProyectosPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
-        <div className="flex gap-2 flex-wrap">
-          {['todos', 'activo', 'pausado', 'completado', 'cancelado'].map(s => (
-            <button key={s} onClick={() => setStatus(s)}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all"
-              style={{
-                background: status === s ? 'rgba(64,181,250,0.15)' : '#f4f7fa',
-                color: status === s ? '#40b5fa' : '#6b8fa0',
-                border: `1px solid ${status === s ? 'rgba(64,181,250,0.3)' : 'rgba(0,40,80,0.08)'}`,
-              }}>
-              {s}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {['todos', ...TIPOS].map(t => (
-            <button key={t} onClick={() => setTipo(t)}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-              style={{
-                background: tipo === t ? 'rgba(64,181,250,0.08)' : 'transparent',
-                color: tipo === t ? '#40b5fa' : '#6b8fa0',
-                border: `1px solid ${tipo === t ? 'rgba(64,181,250,0.2)' : 'rgba(0,40,80,0.07)'}`,
-              }}>
-              {t}
-            </button>
-          ))}
-        </div>
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {['todos', 'activo', 'pausado', 'completado', 'cancelado'].map(s => (
+          <button key={s} onClick={() => setStatus(s)}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all"
+            style={{
+              background: status === s ? 'rgba(64,181,250,0.15)' : '#f4f7fa',
+              color: status === s ? '#40b5fa' : '#6b8fa0',
+              border: `1px solid ${status === s ? 'rgba(64,181,250,0.3)' : 'rgba(0,40,80,0.08)'}`,
+            }}>
+            {s}
+          </button>
+        ))}
       </div>
 
       <ProyectosList projects={filtered} />

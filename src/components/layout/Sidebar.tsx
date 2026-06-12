@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
+import { ROLE_LABELS } from '@/types'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -83,8 +84,8 @@ export default function Sidebar({ profile }: SidebarProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold truncate" style={{ color: '#1a2e3b' }}>{profile.full_name}</p>
-            <p className="text-[10px] capitalize" style={{ color: '#6b8fa0' }}>
-              {profile.role === 'admin' ? 'Directora' : 'Consultora'}
+            <p className="text-[10px]" style={{ color: '#6b8fa0' }}>
+              {ROLE_LABELS[profile.email] ?? (profile.role === 'admin' ? 'Administrador' : 'Consultor')}
             </p>
           </div>
         </div>
