@@ -8,10 +8,11 @@ import type { Profile } from '@/types'
 
 export default function AppShell({ profile, children }: { profile: Profile; children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false)
 
   return (
     <div className="flex min-h-screen" style={{ background: '#f0f4f8' }}>
-      {/* Mobile backdrop only */}
+      {/* Mobile backdrop */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 lg:hidden"
@@ -20,13 +21,18 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         />
       )}
 
-      {/* Sidebar: always visible on desktop, slide-in overlay on mobile */}
-      <Sidebar profile={profile} isOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <Sidebar
+        profile={profile}
+        isOpen={mobileOpen}
+        isCollapsed={desktopCollapsed}
+        onClose={() => setMobileOpen(false)}
+        onToggle={() => setDesktopCollapsed(c => !c)}
+      />
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-screen lg:ml-[240px]">
+      {/* Content shifts right based on desktop sidebar width */}
+      <div className={`flex-1 flex flex-col min-h-screen transition-[margin-left] duration-300 ease-in-out ${desktopCollapsed ? 'lg:ml-16' : 'lg:ml-60'}`}>
 
-        {/* Top bar – MOBILE ONLY */}
+        {/* Mobile-only top bar */}
         <header
           className="sticky top-0 z-30 flex items-center gap-3 px-4 h-14 flex-shrink-0 lg:hidden"
           style={{ background: '#ffffff', borderBottom: '1px solid rgba(0,40,80,0.08)' }}>
