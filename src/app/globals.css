@@ -22,10 +22,21 @@
   box-sizing: border-box;
 }
 
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   background: #f4f7fa;
   color: #1a2e3b;
   font-family: 'Poppins', system-ui, sans-serif;
+}
+
+/* Show sidebar collapse button only on desktop */
+@media (min-width: 1024px) {
+  .lg-collapse-btn { display: flex !important; }
+  .mobile-close-btn { display: none !important; }
 }
 
 ::-webkit-scrollbar {
