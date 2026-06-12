@@ -2,33 +2,51 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, daysUntil } from '@/lib/utils'
-import { Building2, FolderKanban, AlertTriangle, CalendarClock, DollarSign, TrendingUp, Users } from 'lucide-react'
+import { daysUntil } from '@/lib/utils'
+import { ROLE_LABELS } from '@/types'
+import {
+  Building2, FolderKanban, AlertTriangle, CalendarClock,
+  FileCheck, TrendingUp, Users, CheckCircle2,
+} from 'lucide-react'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
+
+const PRIORITY_COLOR: Record<string, string> = {
+  baja: '#4ade80', media: '#ffd93d', alta: '#fb923c', critica: '#ff6b6b',
+}
 
 export default function DashboardPage() {
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
     const supabase = createClient()
+    const today = new Date().toISOString().split('T')[0]
+    const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+
     Promise.all([
       supabase.from('companies').select('id', { count: 'exact' }).eq('status', 'activo'),
-      supabase.from('projects').select('id', { count: 'exact' }).eq('status', 'activo'),
-      supabase.from('tasks').select('id, title, due_date, priority').eq('status', 'vencida').limit(5),
-      supabase.from('calendar_events').select('id, title, due_date, type').eq('status', 'pendiente')
-        .gte('due_date', new Date().toISOString().split('T')[0])
-        .order('due_date', { ascending: true }).limit(5),
-      supabase.from('projects').select('value, paid').eq('status', 'activo'),
-      supabase.from('projects').select('id, name').eq('status', 'activo').not('risks', 'is', null).limit(3),
-      supabase.from('profiles').select('id, full_name, role'),
-    ]).then(([activos, proyectos, vencidas, eventos, finanzas, riesgo, perfiles]) => {
+      supabase.from('projects').select('id, name, progress').eq('status', 'activo').order('progress', { ascending: true }),
+      supabase.from('tasks')
+        .select('id, title, due_date, priority')
+        .neq('status', 'completada')
+        .lt('due_date', today)
+        .order('due_date')
+        .limit(8),
+      supabase.from('tasks')
+        .select('id, title, due_date, priority')
+        .neq('status', 'completada')
+        .gte('due_date', today)
+        .lte('due_date', nextWeek)
+        .order('due_date')
+        .limit(8),
+      supabase.from('documents').select('id', { count: 'exact' }).eq('status', 'en_revision'),
+      supabase.from('profiles').select('id, full_name, email, role'),
+    ]).then(([clientes, proyectos, atrasadas, proximas, docsRevision, perfiles]) => {
       setData({
-        totalClientes: activos.count ?? 0,
-        totalProyectos: proyectos.count ?? 0,
-        tareasVencidas: vencidas.data ?? [],
-        eventosProximos: eventos.data ?? [],
-        proyectosFinanzas: finanzas.data ?? [],
-        proyectosRiesgo: riesgo.data ?? [],
+        totalClientes: clientes.count ?? 0,
+        proyectos: proyectos.data ?? [],
+        tareasAtrasadas: atrasadas.data ?? [],
+        tareasProximas: proximas.data ?? [],
+        docsEnRevision: docsRevision.count ?? 0,
         profiles: perfiles.data ?? [],
       })
     })
@@ -36,19 +54,22 @@ export default function DashboardPage() {
 
   if (!data) return <DashboardSkeleton />
 
-  const porCobrar = data.proyectosFinanzas.reduce((acc: number, p: any) => acc + ((p.value ?? 0) - (p.paid ?? 0)), 0)
+  const avgProgress = data.proyectos.length > 0
+    ? Math.round(data.proyectos.reduce((acc: number, p: any) => acc + (p.progress ?? 0), 0) / data.proyectos.length)
+    : 0
 
   const kpis = [
-    { label: 'Clientes activos', value: data.totalClientes, icon: Building2, color: '#40b5fa', bg: 'rgba(64,181,250,0.10)' },
-    { label: 'Proyectos en curso', value: data.totalProyectos, icon: FolderKanban, color: '#40b5fa', bg: 'rgba(64,181,250,0.10)' },
-    { label: 'Tareas vencidas', value: data.tareasVencidas.length, icon: AlertTriangle, color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)' },
-    { label: 'Auditorías próximas', value: data.eventosProximos.filter((e: any) => e.type === 'auditoria').length, icon: CalendarClock, color: '#ffd93d', bg: 'rgba(255,217,61,0.10)' },
-    { label: 'Por cobrar', value: formatCurrency(porCobrar), icon: DollarSign, color: '#40b5fa', bg: 'rgba(64,181,250,0.10)', isText: true },
-    { label: 'Proyectos en riesgo', value: data.proyectosRiesgo.length, icon: TrendingUp, color: '#ffd93d', bg: 'rgba(255,217,61,0.10)' },
+    { label: 'Clientes activos',   value: data.totalClientes,          icon: Building2,     color: '#40b5fa', bg: 'rgba(64,181,250,0.10)' },
+    { label: 'Proyectos activos',  value: data.proyectos.length,       icon: FolderKanban,  color: '#40b5fa', bg: 'rgba(64,181,250,0.10)' },
+    { label: 'Avance promedio',    value: `${avgProgress}%`,           icon: TrendingUp,    color: '#4ade80', bg: 'rgba(74,222,128,0.10)' },
+    { label: 'Tareas atrasadas',   value: data.tareasAtrasadas.length, icon: AlertTriangle, color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)' },
+    { label: 'Vencen esta semana', value: data.tareasProximas.length,  icon: CalendarClock, color: '#ffd93d', bg: 'rgba(255,217,61,0.10)' },
+    { label: 'Docs en revisión',   value: data.docsEnRevision,         icon: FileCheck,     color: '#a78bfa', bg: 'rgba(167,139,250,0.10)' },
   ]
 
   return (
     <div className="p-8">
+      {/* Header */}
       <div className="mb-8">
         <p className="text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: '#40b5fa' }}>Vista gerencial</p>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#1a2e3b' }}>Dashboard</h1>
@@ -57,16 +78,15 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        {kpis.map(({ label, value, icon: Icon, color, bg, isText }) => (
+        {kpis.map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className="rounded-2xl p-5 relative overflow-hidden"
             style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: bg }}>
               <Icon className="w-4 h-4" style={{ color }} />
             </div>
-            <div className="text-3xl font-black mb-1" style={{ color, lineHeight: 1 }}>
-              {isText ? <span className="text-xl">{value}</span> : value}
-            </div>
+            <div className="text-3xl font-black mb-1" style={{ color, lineHeight: 1 }}>{value}</div>
             <div className="text-[10px] uppercase tracking-wider font-medium" style={{ color: '#6b8fa0' }}>{label}</div>
             <div className="absolute bottom-0 left-0 right-0 h-0.5"
               style={{ background: `linear-gradient(90deg, transparent, ${color}30, transparent)` }} />
@@ -74,87 +94,122 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Tareas vencidas */}
-        <div className="rounded-2xl p-6"
-          style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Tareas atrasadas */}
+        <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
           <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#1a2e3b' }}>
-            <AlertTriangle className="w-4 h-4" style={{ color: '#ff6b6b' }} />Tareas vencidas
+            <AlertTriangle className="w-4 h-4" style={{ color: '#ff6b6b' }} />Tareas atrasadas
           </h3>
-          {data.tareasVencidas.length > 0 ? (
+          {data.tareasAtrasadas.length > 0 ? (
             <div className="space-y-2">
-              {data.tareasVencidas.map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
-                  style={{ background: 'rgba(255,107,107,0.06)', border: '1px solid rgba(255,107,107,0.15)' }}>
-                  <span className="text-sm" style={{ color: '#1a2e3b' }}>{t.title}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,107,107,0.15)', color: '#ff6b6b' }}>
-                    {Math.abs(daysUntil(t.due_date))}d atrás
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-center py-6" style={{ color: '#6b8fa0' }}>Sin tareas vencidas</p>
-          )}
-        </div>
-
-        {/* Próximos vencimientos */}
-        <div className="rounded-2xl p-6"
-          style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-          <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#1a2e3b' }}>
-            <CalendarClock className="w-4 h-4" style={{ color: '#ffd93d' }} />Próximos vencimientos
-          </h3>
-          {data.eventosProximos.length > 0 ? (
-            <div className="space-y-2">
-              {data.eventosProximos.map((ev: any) => {
-                const days = daysUntil(ev.due_date)
-                const urgent = days <= 7
+              {data.tareasAtrasadas.map((t: any) => {
+                const dias = Math.abs(daysUntil(t.due_date))
                 return (
-                  <div key={ev.id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
-                    style={{ background: urgent ? 'rgba(255,217,61,0.06)' : '#fafbfc', border: `1px solid ${urgent ? 'rgba(255,217,61,0.2)' : 'rgba(0,40,80,0.08)'}` }}>
-                    <div>
-                      <p className="text-sm" style={{ color: '#1a2e3b' }}>{ev.title}</p>
-                      <p className="text-xs capitalize" style={{ color: '#6b8fa0' }}>{ev.type}</p>
+                  <div key={t.id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
+                    style={{ background: 'rgba(255,107,107,0.05)', border: '1px solid rgba(255,107,107,0.12)' }}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: PRIORITY_COLOR[t.priority] ?? '#ffd93d' }} />
+                      <span className="text-sm truncate" style={{ color: '#1a2e3b' }}>{t.title}</span>
                     </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
-                      style={{ background: urgent ? 'rgba(255,217,61,0.15)' : 'rgba(64,181,250,0.10)', color: urgent ? '#ffd93d' : '#40b5fa' }}>
-                      {days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : `${days}d`}
+                    <span className="text-xs flex-shrink-0 ml-2 px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(255,107,107,0.15)', color: '#ff6b6b' }}>
+                      {dias === 0 ? 'Hoy' : `${dias}d atrás`}
                     </span>
                   </div>
                 )
               })}
             </div>
           ) : (
-            <p className="text-sm text-center py-6" style={{ color: '#6b8fa0' }}>Sin vencimientos próximos</p>
+            <div className="flex flex-col items-center py-8">
+              <CheckCircle2 className="w-8 h-8 mb-2" style={{ color: '#4ade80' }} />
+              <p className="text-sm" style={{ color: '#6b8fa0' }}>Sin tareas atrasadas</p>
+            </div>
           )}
         </div>
 
-        {/* Equipo */}
-        <div className="rounded-2xl p-6 lg:col-span-2"
-          style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+        {/* Próximas esta semana */}
+        <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
           <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#1a2e3b' }}>
-            <Users className="w-4 h-4" style={{ color: '#40b5fa' }} />Equipo
+            <CalendarClock className="w-4 h-4" style={{ color: '#ffd93d' }} />Vencen esta semana
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {data.profiles.map((p: any) => {
-              const initials = p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-              return (
-                <div key={p.id} className="flex items-center gap-3 rounded-xl px-3 py-3"
-                  style={{ background: 'rgba(64,181,250,0.04)', border: '1px solid rgba(64,181,250,0.12)' }}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>
-                    {initials}
+          {data.tareasProximas.length > 0 ? (
+            <div className="space-y-2">
+              {data.tareasProximas.map((t: any) => {
+                const dias = daysUntil(t.due_date)
+                return (
+                  <div key={t.id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
+                    style={{ background: 'rgba(255,217,61,0.04)', border: '1px solid rgba(255,217,61,0.15)' }}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: PRIORITY_COLOR[t.priority] ?? '#ffd93d' }} />
+                      <span className="text-sm truncate" style={{ color: '#1a2e3b' }}>{t.title}</span>
+                    </div>
+                    <span className="text-xs flex-shrink-0 ml-2 px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(255,217,61,0.15)', color: '#b89c00' }}>
+                      {dias === 0 ? 'Hoy' : dias === 1 ? 'Mañana' : `${dias}d`}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: '#1a2e3b' }}>{p.full_name}</p>
-                    <p className="text-xs capitalize" style={{ color: '#6b8fa0' }}>
-                      {p.role === 'admin' ? 'Directora' : 'Consultora'}
-                    </p>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-center py-8" style={{ color: '#6b8fa0' }}>Sin tareas esta semana</p>
+          )}
+        </div>
+      </div>
+
+      {/* Progreso de proyectos */}
+      <div className="rounded-2xl p-6 mb-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+        <h3 className="font-semibold text-sm flex items-center gap-2 mb-5" style={{ color: '#1a2e3b' }}>
+          <FolderKanban className="w-4 h-4" style={{ color: '#40b5fa' }} />Estado de proyectos
+        </h3>
+        {data.proyectos.length > 0 ? (
+          <div className="space-y-3">
+            {data.proyectos.slice(0, 12).map((p: any) => {
+              const pct = p.progress ?? 0
+              const barColor = pct < 30 ? '#ff6b6b' : pct < 70 ? '#ffd93d' : '#4ade80'
+              return (
+                <div key={p.id} className="flex items-center gap-4">
+                  <span className="text-sm truncate flex-1" style={{ color: '#1a2e3b', minWidth: 0 }}>{p.name}</span>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="w-36 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.05)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
+                    </div>
+                    <span className="text-xs font-semibold w-8 text-right tabular-nums" style={{ color: '#6b8fa0' }}>{pct}%</span>
                   </div>
                 </div>
               )
             })}
           </div>
+        ) : (
+          <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Sin proyectos activos</p>
+        )}
+      </div>
+
+      {/* Equipo */}
+      <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+        <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#1a2e3b' }}>
+          <Users className="w-4 h-4" style={{ color: '#40b5fa' }} />Equipo
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {data.profiles.map((p: any) => {
+            const initials = p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+            const roleLabel = ROLE_LABELS[p.email] ?? (p.role === 'admin' ? 'Administrador' : 'Consultor')
+            return (
+              <div key={p.id} className="flex items-center gap-3 rounded-xl px-3 py-3"
+                style={{ background: 'rgba(64,181,250,0.04)', border: '1px solid rgba(64,181,250,0.12)' }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>
+                  {initials}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{p.full_name}</p>
+                  <p className="text-xs truncate" style={{ color: '#6b8fa0' }}>{roleLabel}</p>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

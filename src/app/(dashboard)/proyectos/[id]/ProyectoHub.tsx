@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  CheckSquare, FileText, Plus,
-  Trash2, X, Loader2, CheckCircle2, Circle,
+  CheckSquare, FileText, Plus, X, Loader2,
+  CheckCircle2, Circle, ChevronDown,
 } from 'lucide-react'
 import ProyectoRepositorio from './ProyectoRepositorio'
 
@@ -40,6 +40,11 @@ export default function ProyectoHub({
   const [showNewTask, setShowNewTask] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', due_date: '', priority: 'media', assigned_to: '' })
   const [addingTask, setAddingTask] = useState(false)
+
+  // Subtasks
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
+  const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null)
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
 
   async function saveProgress() {
     setSavingProgress(true)
@@ -83,10 +88,43 @@ export default function ProyectoHub({
     if (!canEdit) return
     const supabase = createClient()
     await supabase.from('tasks').delete().eq('id', id)
-    setTasks(prev => prev.filter(t => t.id !== id))
+    // Also remove any subtasks of this task from local state
+    setTasks(prev => prev.filter(t => t.id !== id && t.parent_id !== id))
   }
 
-  const doneTasks = tasks.filter(t => t.status === 'completada').length
+  async function addSubtask(parentId: string) {
+    if (!newSubtaskTitle.trim()) return
+    const supabase = createClient()
+    const { data } = await supabase.from('tasks').insert([{
+      project_id: projectId,
+      company_id: companyId,
+      title: newSubtaskTitle.trim(),
+      parent_id: parentId,
+      priority: 'media',
+      assigned_to: userId,
+      status: 'pendiente',
+      created_by: userId,
+    }]).select().single()
+    if (data) {
+      setTasks(prev => [...prev, data])
+      setExpandedTasks(prev => new Set([...prev, parentId]))
+    }
+    setNewSubtaskTitle('')
+    setAddingSubtaskFor(null)
+  }
+
+  function toggleExpand(taskId: string) {
+    setExpandedTasks(prev => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  const topLevelTasks = tasks.filter((t: any) => !t.parent_id)
+  const getSubtasks = (parentId: string) => tasks.filter((t: any) => t.parent_id === parentId)
+  const doneTasks = topLevelTasks.filter((t: any) => t.status === 'completada').length
 
   return (
     <div>
@@ -121,7 +159,7 @@ export default function ProyectoHub({
       {/* Tabs */}
       <div className="flex gap-2 mb-4">
         {([
-          { id: 'tareas', icon: CheckSquare, label: `Tareas (${doneTasks}/${tasks.length})` },
+          { id: 'tareas', icon: CheckSquare, label: `Tareas (${doneTasks}/${topLevelTasks.length})` },
           { id: 'documentos', icon: FileText, label: 'Repositorio' },
         ] as const).map(({ id, icon: Icon, label }) => (
           <button key={id} onClick={() => setTab(id)}
@@ -192,47 +230,132 @@ export default function ProyectoHub({
             </div>
           )}
 
-          {tasks.length === 0 ? (
+          {topLevelTasks.length === 0 ? (
             <p className="text-sm text-center py-10" style={{ color: '#6b8fa0' }}>
               Sin tareas. Agrega la primera.
             </p>
           ) : (
-            <div className="space-y-2">
-              {tasks.map(t => {
+            <div className="space-y-1.5">
+              {topLevelTasks.map((t: any) => {
+                const subtasks = getSubtasks(t.id)
+                const isExpanded = expandedTasks.has(t.id)
                 const pr = PRIORITY[t.priority as keyof typeof PRIORITY] ?? PRIORITY.media
                 const done = t.status === 'completada'
+                const doneSubtasks = subtasks.filter((s: any) => s.status === 'completada').length
+
                 return (
-                  <div key={t.id} className="flex items-center gap-3 rounded-xl px-4 py-3"
-                    style={{ background: '#fafbfc', border: '1px solid rgba(0,40,80,0.07)' }}>
-                    <button onClick={() => toggleTask(t)} className="flex-shrink-0">
-                      {done
-                        ? <CheckCircle2 className="w-5 h-5" style={{ color: '#4ade80' }} />
-                        : <Circle className="w-5 h-5" style={{ color: '#86a2b2' }} />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium"
-                        style={{ color: '#1a2e3b', textDecoration: done ? 'line-through' : 'none', opacity: done ? 0.45 : 1 }}>
-                        {t.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full"
-                          style={{ background: pr.bg, color: pr.color }}>{pr.label}</span>
-                        {t.due_date && (
-                          <span className="text-[10px]" style={{ color: '#6b8fa0' }}>
-                            {new Date(t.due_date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
-                          </span>
+                  <div key={t.id}>
+                    {/* Task row */}
+                    <div className="flex items-center gap-3 rounded-xl px-4 py-3"
+                      style={{ background: '#fafbfc', border: '1px solid rgba(0,40,80,0.07)' }}>
+                      <button onClick={() => toggleTask(t)} className="flex-shrink-0">
+                        {done
+                          ? <CheckCircle2 className="w-5 h-5" style={{ color: '#4ade80' }} />
+                          : <Circle className="w-5 h-5" style={{ color: '#86a2b2' }} />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium"
+                          style={{ color: '#1a2e3b', textDecoration: done ? 'line-through' : 'none', opacity: done ? 0.45 : 1 }}>
+                          {t.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full"
+                            style={{ background: pr.bg, color: pr.color }}>{pr.label}</span>
+                          {t.due_date && (
+                            <span className="text-[10px]" style={{ color: '#6b8fa0' }}>
+                              {new Date(t.due_date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                            </span>
+                          )}
+                          {t.profiles?.full_name && (
+                            <span className="text-[10px]" style={{ color: '#86a2b2' }}>{t.profiles.full_name}</span>
+                          )}
+                          {subtasks.length > 0 && (
+                            <span className="text-[10px]" style={{ color: '#a78bfa' }}>
+                              {doneSubtasks}/{subtasks.length} subtareas
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        {subtasks.length > 0 && (
+                          <button onClick={() => toggleExpand(t.id)}
+                            className="p-1 rounded-lg transition-all"
+                            style={{ color: '#a78bfa' }}>
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
                         )}
-                        {t.profiles?.full_name && (
-                          <span className="text-[10px]" style={{ color: '#86a2b2' }}>{t.profiles.full_name}</span>
+                        <button
+                          onClick={() => {
+                            setAddingSubtaskFor(addingSubtaskFor === t.id ? null : t.id)
+                            setNewSubtaskTitle('')
+                          }}
+                          title="Agregar subtarea"
+                          className="p-1 rounded-lg opacity-30 hover:opacity-100 transition-opacity"
+                          style={{ color: '#40b5fa' }}>
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                        {canEdit && (
+                          <button onClick={() => deleteTask(t.id)}
+                            className="p-1 rounded-lg opacity-30 hover:opacity-100 transition-opacity"
+                            style={{ color: '#ff6b6b' }}>
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
-                    {canEdit && (
-                      <button onClick={() => deleteTask(t.id)}
-                        className="flex-shrink-0 p-1 rounded-lg opacity-30 hover:opacity-100 transition-opacity"
-                        style={{ color: '#ff6b6b' }}>
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+
+                    {/* Add subtask input */}
+                    {addingSubtaskFor === t.id && (
+                      <div className="flex gap-2 mt-1.5 ml-9">
+                        <input
+                          autoFocus
+                          value={newSubtaskTitle}
+                          onChange={e => setNewSubtaskTitle(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') addSubtask(t.id)
+                            if (e.key === 'Escape') setAddingSubtaskFor(null)
+                          }}
+                          placeholder="Título de subtarea..."
+                          className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
+                          style={{ background: '#f4f7fa', border: '1px solid rgba(64,181,250,0.3)', color: '#1a2e3b' }} />
+                        <button onClick={() => addSubtask(t.id)}
+                          className="px-3 py-2 rounded-xl text-xs font-semibold"
+                          style={{ background: '#40b5fa', color: '#fff' }}>Agregar</button>
+                        <button onClick={() => setAddingSubtaskFor(null)}
+                          className="px-3 py-2 rounded-xl text-xs"
+                          style={{ background: '#f4f7fa', color: '#6b8fa0' }}>✕</button>
+                      </div>
+                    )}
+
+                    {/* Subtasks list */}
+                    {(isExpanded || addingSubtaskFor === t.id) && subtasks.length > 0 && (
+                      <div className="ml-9 mt-1 space-y-1">
+                        {subtasks.map((s: any) => {
+                          const sDone = s.status === 'completada'
+                          return (
+                            <div key={s.id} className="flex items-center gap-3 rounded-xl px-3 py-2"
+                              style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.05)' }}>
+                              <button onClick={() => toggleTask(s)} className="flex-shrink-0">
+                                {sDone
+                                  ? <CheckCircle2 className="w-4 h-4" style={{ color: '#4ade80' }} />
+                                  : <Circle className="w-4 h-4" style={{ color: '#86a2b2' }} />}
+                              </button>
+                              <p className="flex-1 text-sm"
+                                style={{ color: '#1a2e3b', textDecoration: sDone ? 'line-through' : 'none', opacity: sDone ? 0.4 : 1 }}>
+                                {s.title}
+                              </p>
+                              {canEdit && (
+                                <button onClick={() => deleteTask(s.id)}
+                                  className="p-0.5 rounded opacity-20 hover:opacity-100 transition-opacity flex-shrink-0"
+                                  style={{ color: '#ff6b6b' }}>
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
                 )
