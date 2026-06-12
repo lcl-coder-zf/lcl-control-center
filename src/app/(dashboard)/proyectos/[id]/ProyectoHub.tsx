@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  CheckSquare, FileText, Plus, Upload, Download,
+  CheckSquare, FileText, Plus,
   Trash2, X, Loader2, CheckCircle2, Circle,
 } from 'lucide-react'
+import ProyectoRepositorio from './ProyectoRepositorio'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',   label: 'Baja' },
@@ -19,14 +20,13 @@ interface Props {
   companyId: string
   initialProgress: number
   initialTasks: any[]
-  initialDocs: any[]
   profiles: { id: string; full_name: string }[]
   canEdit: boolean
   userId: string
 }
 
 export default function ProyectoHub({
-  projectId, companyId, initialProgress, initialTasks, initialDocs, profiles, canEdit, userId,
+  projectId, companyId, initialProgress, initialTasks, profiles, canEdit, userId,
 }: Props) {
   const [tab, setTab] = useState<'tareas' | 'documentos'>('tareas')
 
@@ -40,11 +40,6 @@ export default function ProyectoHub({
   const [showNewTask, setShowNewTask] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', due_date: '', priority: 'media', assigned_to: '' })
   const [addingTask, setAddingTask] = useState(false)
-
-  // Docs
-  const [docs, setDocs] = useState(initialDocs)
-  const [uploading, setUploading] = useState(false)
-  const [dragOver, setDragOver] = useState(false)
 
   async function saveProgress() {
     setSavingProgress(true)
@@ -91,48 +86,6 @@ export default function ProyectoHub({
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
-  async function uploadDoc(file: File) {
-    setUploading(true)
-    const supabase = createClient()
-    const path = `proyectos/${projectId}/${Date.now()}-${file.name}`
-    const { data: upload, error } = await supabase.storage.from('documents').upload(path, file)
-    if (!error && upload) {
-      const { data: doc } = await supabase.from('documents').insert([{
-        company_id: companyId,
-        project_id: projectId,
-        name: file.name,
-        type: 'documento',
-        status: 'pendiente',
-        file_url: path,
-        version: '1.0',
-        uploaded_by: userId,
-      }]).select().single()
-      if (doc) setDocs(prev => [doc, ...prev])
-    }
-    setUploading(false)
-  }
-
-  async function downloadDoc(doc: any) {
-    const supabase = createClient()
-    const { data } = await supabase.storage.from('documents').createSignedUrl(doc.file_url, 3600)
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
-  }
-
-  async function deleteDoc(doc: any) {
-    if (!canEdit) return
-    const supabase = createClient()
-    await supabase.storage.from('documents').remove([doc.file_url])
-    await supabase.from('documents').delete().eq('id', doc.id)
-    setDocs(prev => prev.filter(d => d.id !== doc.id))
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (file) uploadDoc(file)
-  }
-
   const doneTasks = tasks.filter(t => t.status === 'completada').length
 
   return (
@@ -169,7 +122,7 @@ export default function ProyectoHub({
       <div className="flex gap-2 mb-4">
         {([
           { id: 'tareas', icon: CheckSquare, label: `Tareas (${doneTasks}/${tasks.length})` },
-          { id: 'documentos', icon: FileText, label: `Documentos (${docs.length})` },
+          { id: 'documentos', icon: FileText, label: 'Repositorio' },
         ] as const).map(({ id, icon: Icon, label }) => (
           <button key={id} onClick={() => setTab(id)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
@@ -289,62 +242,14 @@ export default function ProyectoHub({
         </div>
       )}
 
-      {/* Panel Documentos */}
+      {/* Panel Repositorio */}
       {tab === 'documentos' && (
-        <div className="rounded-2xl p-5" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-          <p className="text-xs font-semibold tracking-widest uppercase mb-4" style={{ color: '#40b5fa' }}>Documentos</p>
-
-          <div
-            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            onClick={() => document.getElementById('doc-proj-upload')?.click()}
-            className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-8 mb-4 cursor-pointer transition-all"
-            style={{
-              borderColor: dragOver ? '#40b5fa' : 'rgba(0,40,80,0.15)',
-              background: dragOver ? 'rgba(64,181,250,0.04)' : '#fafbfc',
-            }}>
-            {uploading
-              ? <Loader2 className="w-8 h-8 animate-spin mb-2" style={{ color: '#40b5fa' }} />
-              : <Upload className="w-8 h-8 mb-2" style={{ color: '#6b8fa0' }} />}
-            <p className="text-sm font-medium" style={{ color: '#6b8fa0' }}>
-              {uploading ? 'Subiendo...' : 'Arrastra un archivo o haz clic para subir'}
-            </p>
-            <input id="doc-proj-upload" type="file" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) uploadDoc(f); e.target.value = '' }} />
-          </div>
-
-          {docs.length === 0 ? (
-            <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Sin documentos subidos</p>
-          ) : (
-            <div className="space-y-2">
-              {docs.map(d => (
-                <div key={d.id} className="flex items-center gap-3 rounded-xl px-4 py-3"
-                  style={{ background: '#fafbfc', border: '1px solid rgba(0,40,80,0.07)' }}>
-                  <FileText className="w-4 h-4 flex-shrink-0" style={{ color: '#40b5fa' }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{d.name}</p>
-                    <p className="text-xs" style={{ color: '#6b8fa0' }}>
-                      {new Date(d.created_at).toLocaleDateString('es-CO')}
-                    </p>
-                  </div>
-                  <button onClick={() => downloadDoc(d)}
-                    className="p-1.5 rounded-lg flex-shrink-0"
-                    style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                  {canEdit && (
-                    <button onClick={() => deleteDoc(d)}
-                      className="p-1.5 rounded-lg flex-shrink-0"
-                      style={{ background: 'rgba(255,107,107,0.10)', color: '#ff6b6b' }}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <ProyectoRepositorio
+          projectId={projectId}
+          companyId={companyId}
+          canEdit={canEdit}
+          userId={userId}
+        />
       )}
     </div>
   )

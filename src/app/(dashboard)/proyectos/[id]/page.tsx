@@ -29,10 +29,8 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
 
   if (!project) notFound()
 
-  const [{ data: tasks }, { data: docs }] = await Promise.all([
-    supabase.from('tasks').select('*, profiles(id, full_name)').eq('project_id', id).order('due_date'),
-    supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
-  ])
+  const { data: tasks } = await supabase
+    .from('tasks').select('*, profiles(id, full_name)').eq('project_id', id).order('due_date')
 
   const st = STATUS_STYLES[project.status] ?? STATUS_STYLES.activo
   const canEdit = currentProfile?.role === 'admin'
@@ -140,7 +138,6 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
             companyId={project.company_id}
             initialProgress={project.progress ?? 0}
             initialTasks={tasks ?? []}
-            initialDocs={docs ?? []}
             profiles={profiles ?? []}
             canEdit={canEdit}
             userId={user?.id ?? ''}
