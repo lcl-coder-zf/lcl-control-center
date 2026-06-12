@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Building2, FolderKanban, CheckSquare,
@@ -43,9 +44,9 @@ export default function Sidebar({ profile }: SidebarProps) {
       {/* Brand */}
       <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(0,40,80,0.08)' }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black"
-            style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa', border: '1px solid rgba(64,181,250,0.25)' }}>
-            LC
+          <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0"
+            style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.10)' }}>
+            <Image src="/icon.png" alt="LCL" width={32} height={32} className="object-contain" />
           </div>
           <div>
             <p className="text-sm font-bold tracking-wide" style={{ color: '#1a2e3b' }}>LCL Control</p>
