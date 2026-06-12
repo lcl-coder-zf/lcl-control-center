@@ -94,7 +94,7 @@ export default function NuevoProyectoForm({ companies, profiles, defaultClienteI
 
           {(selectedCompany?.service_type?.length ?? 0) > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {selectedCompany.service_type.map(s => (
+              {selectedCompany?.service_type.map(s => (
                 <span key={s} className="text-xs px-2 py-0.5 rounded-full"
                   style={{ background: 'rgba(167,139,250,0.10)', color: '#a78bfa' }}>{s}</span>
               ))}
