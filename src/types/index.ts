@@ -5,6 +5,7 @@ export const ROLE_LABELS: Record<string, string> = {
   'laura@lcl.com':  'Directora de Proyectos',
   'camila@lcl.com': 'Analista de Proyectos',
   'ximena@lcl.com': 'Analista de Proyectos',
+  'isabel@lcl.com': 'Consultora',
 }
 
 export interface Profile {
