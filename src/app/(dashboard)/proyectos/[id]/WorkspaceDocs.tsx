@@ -57,7 +57,6 @@ interface Doc {
   status: DocStatus
   version: string
   updated_at: string
-  profiles?: { full_name: string }
 }
 
 /* ── ToolBtn ────────────────────────────────────────────── */
@@ -120,7 +119,7 @@ export default function WorkspaceDocs({
     setLoading(true)
     const { data } = await supabase
       .from('workspace_docs')
-      .select('id, name, doc_type, content, status, version, updated_at, profiles(full_name)')
+      .select('id, name, doc_type, content, status, version, updated_at')
       .eq('project_id', projectId)
       .order('updated_at', { ascending: false })
     setDocs((data as Doc[]) ?? [])
@@ -192,7 +191,7 @@ export default function WorkspaceDocs({
         created_by: userId,
         updated_by: userId,
       }])
-      .select('id, name, doc_type, content, status, version, updated_at, profiles(full_name)')
+      .select('id, name, doc_type, content, status, version, updated_at')
       .single()
     setCreating(false)
     if (data) {
