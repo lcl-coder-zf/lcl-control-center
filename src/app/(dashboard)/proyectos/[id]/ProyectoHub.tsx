@@ -4,9 +4,10 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   CheckSquare, FileText, Plus, X, Loader2,
-  CheckCircle2, Circle, ChevronDown,
+  CheckCircle2, Circle, ChevronDown, PenLine,
 } from 'lucide-react'
 import ProyectoRepositorio from './ProyectoRepositorio'
+import WorkspaceDocs from './WorkspaceDocs'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',   label: 'Baja' },
@@ -28,7 +29,7 @@ interface Props {
 export default function ProyectoHub({
   projectId, companyId, initialProgress, initialTasks, profiles, canEdit, userId,
 }: Props) {
-  const [tab, setTab] = useState<'tareas' | 'documentos'>('tareas')
+  const [tab, setTab] = useState<'tareas' | 'documentos' | 'workspace'>('tareas')
 
   // Progress
   const [progress, setProgress] = useState(initialProgress)
@@ -157,10 +158,11 @@ export default function ProyectoHub({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {([
-          { id: 'tareas', icon: CheckSquare, label: `Tareas (${doneTasks}/${topLevelTasks.length})` },
-          { id: 'documentos', icon: FileText, label: 'Repositorio' },
+          { id: 'tareas',     icon: CheckSquare, label: `Tareas (${doneTasks}/${topLevelTasks.length})` },
+          { id: 'workspace',  icon: PenLine,     label: 'Documentos editables' },
+          { id: 'documentos', icon: FileText,     label: 'Repositorio de archivos' },
         ] as const).map(({ id, icon: Icon, label }) => (
           <button key={id} onClick={() => setTab(id)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
@@ -365,7 +367,16 @@ export default function ProyectoHub({
         </div>
       )}
 
-      {/* Panel Repositorio */}
+      {/* Panel Documentos editables */}
+      {tab === 'workspace' && (
+        <WorkspaceDocs
+          projectId={projectId}
+          canEdit={canEdit}
+          userId={userId}
+        />
+      )}
+
+      {/* Panel Repositorio de archivos */}
       {tab === 'documentos' && (
         <ProyectoRepositorio
           projectId={projectId}
