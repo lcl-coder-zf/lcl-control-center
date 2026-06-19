@@ -5,6 +5,9 @@ import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 
 const DocEditor = dynamic(() => import('./DocEditor'), { ssr: false })
+const OnlyOfficeEditor = dynamic(() => import('./OnlyOfficeEditor'), { ssr: false })
+
+const OFFICE_EXTS = new Set(['docx', 'doc', 'odt', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp', 'txt', 'rtf'])
 import {
   Folder, FolderOpen, FolderPlus, Upload, Download,
   Trash2, ChevronRight, Loader2, Home, X,
@@ -127,7 +130,8 @@ export default function ProyectoRepositorio({
   const [loadingVersions, setLoadingVersions]   = useState<string | null>(null)
 
   /* editor state */
-  const [viewMode, setViewMode]         = useState<'browser' | 'editor'>('browser')
+  const [viewMode, setViewMode]         = useState<'browser' | 'editor' | 'office'>('browser')
+  const [officeFile, setOfficeFile]     = useState<DocRow | null>(null)
   const [docName, setDocName]           = useState('')
   const [docType, setDocType]           = useState<DocType>('documento')
   const [docStatus, setDocStatus]       = useState<DocStatus>('borrador')
@@ -603,6 +607,22 @@ export default function ProyectoRepositorio({
   }
 
   /* ══════════════════════════════════════════════════════
+     OFFICE VIEW (ONLYOFFICE embedded editor)
+  ══════════════════════════════════════════════════════ */
+  if (viewMode === 'office' && officeFile) {
+    return (
+      <>
+        {RejectModal}
+        <OnlyOfficeEditor
+          documentId={officeFile.id}
+          documentName={officeFile.name}
+          onBack={() => { setViewMode('browser'); setOfficeFile(null); load() }}
+        />
+      </>
+    )
+  }
+
+  /* ══════════════════════════════════════════════════════
      BROWSER VIEW
   ══════════════════════════════════════════════════════ */
   const typeEntries = Object.entries(DOC_TYPES) as [DocType, typeof DOC_TYPES[DocType]][]
@@ -815,22 +835,31 @@ export default function ProyectoRepositorio({
                     const hasHist  = verMaj > 1
                     const histOpen = !!versionHistories[d.id]
 
+                    const isOffice = OFFICE_EXTS.has(ext(d.name))
+
                     return (
                       <div key={d.id}>
                         {/* File row */}
                         <div
-                          className="group flex items-center gap-3 rounded-xl px-4 py-3 transition-all"
+                          className={`group flex items-center gap-3 rounded-xl px-4 py-3 transition-all${isOffice ? ' cursor-pointer' : ''}`}
                           style={{
                             background: '#fafbfc',
                             border: `1px solid ${d.status === 'rechazado' ? 'rgba(255,107,107,0.18)' : 'rgba(0,40,80,0.07)'}`,
                           }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#f4f8ff'}
-                          onMouseLeave={e => e.currentTarget.style.background = '#fafbfc'}>
+                          onMouseEnter={e => { e.currentTarget.style.background = isOffice ? '#f0f8ff' : '#f4f8ff' }}
+                          onMouseLeave={e => e.currentTarget.style.background = '#fafbfc'}
+                          onClick={() => { if (isOffice) { setOfficeFile(d); setViewMode('office') } }}>
 
                           <span className="text-xl flex-shrink-0 select-none">{emoji(d.name)}</span>
 
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{d.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{d.name}</p>
+                              {isOffice && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+                                  style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>Editar</span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
                                 style={{ background: 'rgba(0,40,80,0.06)', color: '#6b8fa0' }}>v{d.version}</span>
@@ -907,7 +936,8 @@ export default function ProyectoRepositorio({
                           </div>
 
                           {/* Hover actions */}
-                          <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={e => e.stopPropagation()}>
                             <button onClick={() => download(d)} title="Descargar" className="p-1.5 rounded-lg" style={{ color: '#40b5fa' }}>
                               <Download className="w-3.5 h-3.5" />
                             </button>
