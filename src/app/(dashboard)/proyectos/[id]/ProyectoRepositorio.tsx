@@ -20,7 +20,7 @@ import {
   Folder, FolderOpen, FolderPlus, Upload, Download,
   Trash2, ChevronRight, Loader2, Home, X,
   Clock, CheckCircle2, XCircle, AlertTriangle, Eye,
-  RotateCcw, FileText, FilePlus, ArrowLeft,
+  RotateCcw, FileText, FilePlus, ArrowLeft, Send,
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight,
   List, ListOrdered, ListChecks,
@@ -123,7 +123,6 @@ export default function ProyectoRepositorio({
   const [dragOver, setDragOver]       = useState(false)
   const [showNewFolder, setShowNewFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
-  const [fileStatusMenu, setFileStatusMenu] = useState<string | null>(null)
   const [showNewDocMenu, setShowNewDocMenu] = useState(false)
   const [creatingDoc, setCreatingDoc] = useState(false)
 
@@ -133,7 +132,6 @@ export default function ProyectoRepositorio({
   const [docType, setDocType]       = useState<DocType>('documento')
   const [docStatus, setDocStatus]   = useState<DocStatus>('borrador')
   const [saveState, setSaveState]   = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [showStatusMenu, setShowStatusMenu] = useState(false)
 
   const currentId    = crumb[crumb.length - 1].id
   const activeDocId  = useRef<string | null>(null)
@@ -274,20 +272,41 @@ export default function ProyectoRepositorio({
   }
 
   async function replaceDoc(doc: DocRow, file: File) {
+    setUploading(true)
     const path = `proyectos/${projectId}/${doc.folder_id ?? 'root'}/${Date.now()}-${safePath(file.name)}`
     const { data: up } = await supabase.storage.from('documents').upload(path, file)
-    if (!up) return
-    await supabase.storage.from('documents').remove([doc.file_url])
+    if (!up) { setUploading(false); return }
     const [maj] = (doc.version ?? '1.0').split('.').map(Number)
+    // Save old version to history before overwriting
+    await supabase.from('document_versions').insert([{
+      document_id: doc.id, version_number: maj,
+      file_url: doc.file_url, file_name: doc.name, uploaded_by: userId,
+    }])
     const newVer = `${maj + 1}.0`
-    await supabase.from('documents').update({ file_url: path, name: file.name, version: newVer, updated_at: new Date().toISOString() }).eq('id', doc.id)
-    setDocs(p => p.map(d => d.id === doc.id ? { ...d, file_url: path, name: file.name, version: newVer } : d))
+    await supabase.from('documents').update({
+      file_url: path, name: file.name, version: newVer,
+      status: 'pendiente', updated_at: new Date().toISOString(),
+    }).eq('id', doc.id)
+    setDocs(p => p.map(d => d.id === doc.id ? { ...d, file_url: path, name: file.name, version: newVer, status: 'pendiente' } : d))
+    setUploading(false)
   }
 
-  async function setFileStatus(docId: string, status: string) {
-    await supabase.from('documents').update({ status }).eq('id', docId)
-    setDocs(p => p.map(d => d.id === docId ? { ...d, status } : d))
-    setFileStatusMenu(null)
+  async function submitDoc(docId: string) {
+    await supabase.from('documents').update({ status: 'en_revision' }).eq('id', docId)
+    await supabase.from('document_approvals').insert([{ document_id: docId, action: 'submitted', performed_by: userId }])
+    setDocs(p => p.map(d => d.id === docId ? { ...d, status: 'en_revision' } : d))
+  }
+
+  async function approveDoc(docId: string) {
+    await supabase.from('documents').update({ status: 'aprobado' }).eq('id', docId)
+    await supabase.from('document_approvals').insert([{ document_id: docId, action: 'approved', performed_by: userId }])
+    setDocs(p => p.map(d => d.id === docId ? { ...d, status: 'aprobado' } : d))
+  }
+
+  async function rejectDoc(docId: string) {
+    await supabase.from('documents').update({ status: 'rechazado' }).eq('id', docId)
+    await supabase.from('document_approvals').insert([{ document_id: docId, action: 'rejected', performed_by: userId }])
+    setDocs(p => p.map(d => d.id === docId ? { ...d, status: 'rechazado' } : d))
   }
 
   async function download(doc: DocRow) {
@@ -340,7 +359,7 @@ export default function ProyectoRepositorio({
 
   async function changeEditableStatus(status: DocStatus) {
     if (!activeDocId.current) return
-    setDocStatus(status); setShowStatusMenu(false)
+    setDocStatus(status)
     await supabase.from('workspace_docs').update({ status, updated_at: new Date().toISOString() }).eq('id', activeDocId.current)
     setEditableDocs(p => p.map(d => d.id === activeDocId.current ? { ...d, status } : d))
   }
@@ -372,8 +391,7 @@ export default function ProyectoRepositorio({
           }
         `}</style>
         <div className="rounded-2xl overflow-visible"
-          style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}
-          onClick={() => setShowStatusMenu(false)}>
+          style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
 
           {/* Toolbar */}
           <div className="flex items-center gap-1 px-3 py-2.5 flex-wrap gap-y-2"
@@ -413,27 +431,42 @@ export default function ProyectoRepositorio({
             <span className="text-[10px] flex-shrink-0" style={{ color: '#c8dae4' }}>{wordCount} palabras</span>
             <TDiv />
 
-            {/* Status picker */}
-            <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
-              <button onClick={() => canEdit && setShowStatusMenu(!showStatusMenu)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
+            {/* Workflow status */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
                 style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.color}40` }}>
                 <sc.Icon className="w-3 h-3" />{sc.label}
-                {canEdit && <ChevronDown className="w-3 h-3" />}
-              </button>
-              {showStatusMenu && (
-                <div className="absolute top-full right-0 mt-1 rounded-xl shadow-xl z-50 overflow-hidden min-w-44"
-                  style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)' }}>
-                  <p className="px-3 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#86a2b2' }}>Estado</p>
-                  {(Object.entries(DOC_STATUS) as [DocStatus, typeof DOC_STATUS[DocStatus]][]).map(([k, cfg]) => (
-                    <button key={k} onClick={() => changeEditableStatus(k)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left"
-                      style={{ color: cfg.color, background: docStatus === k ? cfg.bg : 'transparent' }}>
-                      <cfg.Icon className="w-3.5 h-3.5" />{cfg.label}
-                      {docStatus === k && <span className="ml-auto">✓</span>}
-                    </button>
-                  ))}
-                </div>
+              </span>
+              {/* Consultant: submit when borrador */}
+              {!canEdit && docStatus === 'borrador' && (
+                <button onClick={() => changeEditableStatus('en_revision')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
+                  style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa', border: '1px solid rgba(64,181,250,0.2)' }}>
+                  <Send className="w-3 h-3" />Enviar
+                </button>
+              )}
+              {/* Consultant: reset when rejected */}
+              {!canEdit && docStatus === 'rechazado' && (
+                <button onClick={() => changeEditableStatus('borrador')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
+                  style={{ background: 'rgba(107,143,160,0.12)', color: '#6b8fa0', border: '1px solid rgba(107,143,160,0.2)' }}>
+                  <RotateCcw className="w-3 h-3" />Corregir
+                </button>
+              )}
+              {/* Admin: approve or reject when en_revision */}
+              {canEdit && docStatus === 'en_revision' && (
+                <>
+                  <button onClick={() => changeEditableStatus('aprobado')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
+                    style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>
+                    <CheckCircle2 className="w-3 h-3" />Aprobar
+                  </button>
+                  <button onClick={() => changeEditableStatus('rechazado')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
+                    style={{ background: 'rgba(255,107,107,0.12)', color: '#ff6b6b', border: '1px solid rgba(255,107,107,0.2)' }}>
+                    <XCircle className="w-3 h-3" />Rechazar
+                  </button>
+                </>
               )}
             </div>
 
@@ -479,7 +512,7 @@ export default function ProyectoRepositorio({
   const typeEntries = Object.entries(DOC_TYPES) as [DocType, typeof DOC_TYPES[DocType]][]
 
   return (
-    <div onClick={() => { setFileStatusMenu(null); setShowNewDocMenu(false) }}>
+    <div onClick={() => setShowNewDocMenu(false)}>
 
       {/* Breadcrumb + toolbar */}
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -694,26 +727,30 @@ export default function ProyectoRepositorio({
                         </div>
                       </div>
 
-                      {/* File status badge */}
-                      <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setFileStatusMenu(fileStatusMenu === d.id ? null : d.id)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold"
+                      {/* File workflow */}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold"
                           style={{ background: st.bg, color: st.color }}>
                           <st.Icon className="w-3 h-3" />{st.label}
-                        </button>
-                        {fileStatusMenu === d.id && (
-                          <div className="absolute top-full right-0 mt-1 rounded-xl overflow-hidden shadow-xl z-30 min-w-44"
-                            style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.12)' }}>
-                            <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#86a2b2' }}>Estado</p>
-                            {Object.entries(FILE_STATUS).map(([key, cfg]) => (
-                              <button key={key} onClick={() => setFileStatus(d.id, key)}
-                                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left"
-                                style={{ color: cfg.color, background: d.status === key ? cfg.bg : 'transparent' }}>
-                                <cfg.Icon className="w-3.5 h-3.5" />{cfg.label}
-                                {d.status === key && <span className="ml-auto text-[10px]">✓</span>}
-                              </button>
-                            ))}
-                          </div>
+                        </span>
+                        {!canEdit && d.status === 'pendiente' && (
+                          <button onClick={() => submitDoc(d.id)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold"
+                            style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa', border: '1px solid rgba(64,181,250,0.2)' }}>
+                            <Send className="w-3 h-3" />Enviar
+                          </button>
+                        )}
+                        {canEdit && d.status === 'en_revision' && (
+                          <>
+                            <button onClick={() => approveDoc(d.id)} title="Aprobar"
+                              className="p-1.5 rounded-lg" style={{ color: '#4ade80' }}>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => rejectDoc(d.id)} title="Rechazar"
+                              className="p-1.5 rounded-lg" style={{ color: '#ff6b6b' }}>
+                              <XCircle className="w-3.5 h-3.5" />
+                            </button>
+                          </>
                         )}
                       </div>
 
