@@ -1,31 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Underline from '@tiptap/extension-underline'
-import TextAlign from '@tiptap/extension-text-align'
-import Highlight from '@tiptap/extension-highlight'
-import Placeholder from '@tiptap/extension-placeholder'
-import CharacterCount from '@tiptap/extension-character-count'
-import { TextStyle } from '@tiptap/extension-text-style'
-import { Table } from '@tiptap/extension-table'
-import TableRow from '@tiptap/extension-table-row'
-import TableHeader from '@tiptap/extension-table-header'
-import TableCell from '@tiptap/extension-table-cell'
-import TaskList from '@tiptap/extension-task-list'
-import TaskItem from '@tiptap/extension-task-item'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
+
+const DocEditor = dynamic(() => import('./DocEditor'), { ssr: false })
 import {
   Folder, FolderOpen, FolderPlus, Upload, Download,
   Trash2, ChevronRight, Loader2, Home, X,
   Clock, CheckCircle2, XCircle, AlertTriangle, Eye,
   RotateCcw, FileText, FilePlus, ArrowLeft, Send,
-  Bold, Italic, Underline as UnderlineIcon, Strikethrough,
-  AlignLeft, AlignCenter, AlignRight,
-  List, ListOrdered, ListChecks,
-  Heading1, Heading2, Heading3,
-  Table as TableIcon, Minus, Highlighter,
   Shield, GitBranch, Users, BarChart3, CheckSquare,
   ChevronDown, Printer, PenLine, History, MessageSquare,
 } from 'lucide-react'
@@ -130,6 +114,10 @@ export default function ProyectoRepositorio({
   const [showNewDocMenu, setShowNewDocMenu] = useState(false)
   const [creatingDoc, setCreatingDoc]       = useState(false)
 
+  /* admin status menus */
+  const [fileStatusMenu, setFileStatusMenu] = useState<string | null>(null)
+  const [docStatusMenu, setDocStatusMenu]   = useState(false)
+
   /* reject modal */
   const [rejectTarget, setRejectTarget] = useState<{ id: string; kind: 'file' | 'doc' } | null>(null)
   const [rejectNote, setRejectNote]     = useState('')
@@ -145,47 +133,20 @@ export default function ProyectoRepositorio({
   const [docStatus, setDocStatus]       = useState<DocStatus>('borrador')
   const [docRejectionNote, setDocRejectionNote] = useState('')
   const [saveState, setSaveState]       = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [wordCount, setWordCount]       = useState(0)
+  const [activeDocId, setActiveDocId]   = useState<string | null>(null)
+  const [currentContent, setCurrentContent] = useState<any>(null)
 
-  const currentId   = crumb[crumb.length - 1].id
-  const activeDocId = useRef<string | null>(null)
-  const saveTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const supabase    = createClient()
+  const currentId = crumb[crumb.length - 1].id
+  const supabase  = createClient()
 
-  /* ── TipTap ─────────────────────────────────────────── */
-  const persistContent = useCallback(async (content: any) => {
-    if (!activeDocId.current) return
-    setSaveState('saving')
+  async function persistContent(content: any) {
+    if (!activeDocId) return
     await supabase
       .from('workspace_docs')
       .update({ content, updated_at: new Date().toISOString(), updated_by: userId })
-      .eq('id', activeDocId.current)
-    setSaveState('saved')
-    setTimeout(() => setSaveState('idle'), 2500)
-  }, [userId])
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TextStyle,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Highlight.configure({ multicolor: true }),
-      Placeholder.configure({ placeholder: 'Empieza a escribir...' }),
-      CharacterCount,
-      Table.configure({ resizable: true }),
-      TableRow, TableHeader, TableCell,
-      TaskList,
-      TaskItem.configure({ nested: true }),
-    ],
-    content: '',
-    editable: canEdit,
-    onUpdate: ({ editor }) => {
-      if (!activeDocId.current) return
-      setSaveState('idle')
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-      saveTimer.current = setTimeout(() => persistContent(editor.getJSON()), 1500)
-    },
-  })
+      .eq('id', activeDocId)
+  }
 
   /* ── Load ───────────────────────────────────────────── */
   useEffect(() => { load() }, [crumb])
@@ -321,6 +282,13 @@ export default function ProyectoRepositorio({
     setDocs(p => p.map(d => d.id === docId ? { ...d, status: 'aprobado', rejection_note: null } : d))
   }
 
+  async function adminSetFileStatus(docId: string, status: string) {
+    setFileStatusMenu(null)
+    if (status === 'rechazado') { openRejectModal('file', docId); return }
+    await supabase.from('documents').update({ status, rejection_note: null }).eq('id', docId)
+    setDocs(p => p.map(d => d.id === docId ? { ...d, status, rejection_note: null } : d))
+  }
+
   function openRejectModal(kind: 'file' | 'doc', id: string) {
     setRejectTarget({ kind, id })
     setRejectNote('')
@@ -341,8 +309,10 @@ export default function ProyectoRepositorio({
       await supabase.from('workspace_docs').update({
         status: 'rechazado', rejection_note: note, updated_at: new Date().toISOString(),
       }).eq('id', id)
-      setDocStatus('rechazado')
-      setDocRejectionNote(note ?? '')
+      if (activeDocId === id) {
+        setDocStatus('rechazado')
+        setDocRejectionNote(note ?? '')
+      }
       setEditableDocs(p => p.map(d => d.id === id ? { ...d, status: 'rechazado', rejection_note: note } : d))
     }
     setRejectTarget(null); setRejectNote('')
@@ -393,32 +363,31 @@ export default function ProyectoRepositorio({
   }
 
   function openEditableDoc(doc: EditableDoc) {
-    activeDocId.current = doc.id
+    setActiveDocId(doc.id)
     setDocName(doc.name)
     setDocType(doc.doc_type)
     setDocStatus(doc.status)
     setDocRejectionNote(doc.rejection_note ?? '')
-    editor?.commands.setContent(doc.content ?? { type: 'doc', content: [{ type: 'paragraph' }] })
+    setCurrentContent(doc.content)
     setViewMode('editor')
   }
 
   function goBackToBrowser() {
-    if (saveTimer.current) { clearTimeout(saveTimer.current); if (editor) persistContent(editor.getJSON()) }
-    activeDocId.current = null
+    setActiveDocId(null)
     setViewMode('browser')
     load()
   }
 
   async function saveEditableName(name: string) {
-    if (!activeDocId.current || !name.trim()) return
-    await supabase.from('workspace_docs').update({ name: name.trim(), updated_at: new Date().toISOString() }).eq('id', activeDocId.current)
-    setEditableDocs(p => p.map(d => d.id === activeDocId.current ? { ...d, name: name.trim() } : d))
+    if (!activeDocId || !name.trim()) return
+    await supabase.from('workspace_docs').update({ name: name.trim(), updated_at: new Date().toISOString() }).eq('id', activeDocId)
+    setEditableDocs(p => p.map(d => d.id === activeDocId ? { ...d, name: name.trim() } : d))
   }
 
   async function changeEditableStatus(status: DocStatus) {
-    if (!activeDocId.current) return
+    if (!activeDocId) return
     if (status === 'rechazado') {
-      openRejectModal('doc', activeDocId.current)
+      openRejectModal('doc', activeDocId)
       return
     }
     setDocStatus(status)
@@ -426,8 +395,8 @@ export default function ProyectoRepositorio({
     await supabase.from('workspace_docs').update({
       status, rejection_note: null,
       updated_at: new Date().toISOString(),
-    }).eq('id', activeDocId.current)
-    setEditableDocs(p => p.map(d => d.id === activeDocId.current
+    }).eq('id', activeDocId)
+    setEditableDocs(p => p.map(d => d.id === activeDocId
       ? { ...d, status, rejection_note: null }
       : d))
   }
@@ -439,12 +408,6 @@ export default function ProyectoRepositorio({
     setEditableDocs(p => p.filter(d => d.id !== id))
   }
 
-  const A = (name: string, attrs?: any) => editor?.isActive(name, attrs) ?? false
-  const wordCount = (editor?.storage.characterCount as any)?.words?.() ?? 0
-
-  /* ══════════════════════════════════════════════════════
-     REJECT MODAL (shared)
-  ══════════════════════════════════════════════════════ */
   const RejectModal = rejectTarget ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(10,20,40,0.45)' }}
@@ -501,12 +464,15 @@ export default function ProyectoRepositorio({
             #lcl-print-area { display: block !important; position: fixed; top: 0; left: 0; width: 100%; }
             #lcl-print-area * { visibility: visible; }
           }
+          /* BlockNote overrides */
+          .bn-container { font-family: inherit; }
+          .bn-editor { padding: 0 !important; }
         `}</style>
         <div className="rounded-2xl overflow-visible"
           style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
 
-          {/* Toolbar */}
-          <div className="flex items-center gap-1 px-3 py-2.5 flex-wrap gap-y-2"
+          {/* Toolbar — simplified (BlockNote handles formatting inline) */}
+          <div className="flex items-center gap-2 px-3 py-2.5 flex-wrap"
             style={{ borderBottom: '1px solid rgba(0,40,80,0.08)' }}>
 
             <button onClick={goBackToBrowser}
@@ -516,39 +482,37 @@ export default function ProyectoRepositorio({
             </button>
             <TDiv />
 
-            <ToolBtn active={A('bold')}      onClick={() => editor?.chain().focus().toggleBold().run()}      title="Negrita"        disabled={!canEdit}><Bold className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('italic')}    onClick={() => editor?.chain().focus().toggleItalic().run()}    title="Cursiva"        disabled={!canEdit}><Italic className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('underline')} onClick={() => editor?.chain().focus().toggleUnderline().run()} title="Subrayado"      disabled={!canEdit}><UnderlineIcon className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('strike')}    onClick={() => editor?.chain().focus().toggleStrike().run()}    title="Tachado"        disabled={!canEdit}><Strikethrough className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('highlight')} onClick={() => editor?.chain().focus().toggleHighlight({ color: '#ffd93d' }).run()} title="Resaltar" disabled={!canEdit}><Highlighter className="w-3.5 h-3.5" /></ToolBtn>
-            <TDiv />
-
-            <ToolBtn active={A('heading', { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} title="Título 1" disabled={!canEdit}><Heading1 className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('heading', { level: 2 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Título 2" disabled={!canEdit}><Heading2 className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('heading', { level: 3 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} title="Título 3" disabled={!canEdit}><Heading3 className="w-3.5 h-3.5" /></ToolBtn>
-            <TDiv />
-
-            <ToolBtn active={A('bulletList')}  onClick={() => editor?.chain().focus().toggleBulletList().run()}  title="Lista"          disabled={!canEdit}><List className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('orderedList')} onClick={() => editor?.chain().focus().toggleOrderedList().run()} title="Lista numerada" disabled={!canEdit}><ListOrdered className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('taskList')}    onClick={() => editor?.chain().focus().toggleTaskList().run()}     title="Checkboxes"     disabled={!canEdit}><ListChecks className="w-3.5 h-3.5" /></ToolBtn>
-            <TDiv />
-
-            <ToolBtn active={false} onClick={() => editor?.chain().focus().setTextAlign('left').run()}   title="Izquierda" disabled={!canEdit}><AlignLeft className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={false} onClick={() => editor?.chain().focus().setTextAlign('center').run()} title="Centrar"   disabled={!canEdit}><AlignCenter className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={false} onClick={() => editor?.chain().focus().setTextAlign('right').run()}  title="Derecha"   disabled={!canEdit}><AlignRight className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={A('table')} onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insertar tabla" disabled={!canEdit}><TableIcon className="w-3.5 h-3.5" /></ToolBtn>
-            <ToolBtn active={false} onClick={() => editor?.chain().focus().setHorizontalRule().run()} title="Línea" disabled={!canEdit}><Minus className="w-3.5 h-3.5" /></ToolBtn>
-
             <div className="flex-1 min-w-2" />
             <span className="text-[10px] flex-shrink-0" style={{ color: '#c8dae4' }}>{wordCount} palabras</span>
             <TDiv />
 
             {/* Workflow status */}
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
-                style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.color}40` }}>
-                <sc.Icon className="w-3 h-3" />{sc.label}
-              </span>
+            <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+              {/* Status badge — admin gets dropdown, consultant sees badge only */}
+              <div className="relative">
+                <button
+                  onClick={() => canEdit && setDocStatusMenu(!docStatusMenu)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
+                  style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.color}40` }}>
+                  <sc.Icon className="w-3 h-3" />{sc.label}
+                  {canEdit && <ChevronDown className="w-2.5 h-2.5" />}
+                </button>
+                {canEdit && docStatusMenu && (
+                  <div className="absolute top-full right-0 mt-1 rounded-xl shadow-xl z-50 overflow-hidden min-w-44"
+                    style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)' }}>
+                    <p className="px-3 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#86a2b2' }}>Cambiar estado</p>
+                    {(Object.entries(DOC_STATUS) as [DocStatus, typeof DOC_STATUS[DocStatus]][]).map(([k, cfg]) => (
+                      <button key={k}
+                        onClick={() => { setDocStatusMenu(false); changeEditableStatus(k) }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left"
+                        style={{ color: cfg.color, background: docStatus === k ? cfg.bg : 'transparent' }}>
+                        <cfg.Icon className="w-3.5 h-3.5" />{cfg.label}
+                        {docStatus === k && <span className="ml-auto text-[10px]">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {!canEdit && docStatus === 'borrador' && (
                 <button onClick={() => changeEditableStatus('en_revision')}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold"
@@ -618,9 +582,20 @@ export default function ProyectoRepositorio({
             <div className="h-px mt-5" style={{ background: 'rgba(0,40,80,0.06)' }} />
           </div>
 
-          {/* Editor */}
-          <div id="lcl-print-area" className="px-8 pb-12">
-            <EditorContent editor={editor} className="tiptap-lcl" />
+          {/* BlockNote Editor */}
+          <div id="lcl-print-area" className="px-4 pb-8 min-h-[400px]">
+            {activeDocId && (
+              <DocEditor
+                key={activeDocId}
+                initialContent={currentContent}
+                canEdit={canEdit}
+                onSave={persistContent}
+                onStateChange={({ wordCount: wc, saveState: ss }) => {
+                  setWordCount(wc)
+                  setSaveState(ss)
+                }}
+              />
+            )}
           </div>
         </div>
       </>
@@ -635,7 +610,7 @@ export default function ProyectoRepositorio({
   return (
     <>
       {RejectModal}
-      <div onClick={() => setShowNewDocMenu(false)}>
+      <div onClick={() => { setShowNewDocMenu(false); setFileStatusMenu(null); setDocStatusMenu(false) }}>
 
         {/* Breadcrumb + toolbar */}
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -880,11 +855,35 @@ export default function ProyectoRepositorio({
                           </div>
 
                           {/* Workflow actions */}
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold"
-                              style={{ background: st.bg, color: st.color }}>
-                              <st.Icon className="w-3 h-3" />{st.label}
-                            </span>
+                          <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                            {/* Status badge — admin gets dropdown */}
+                            <div className="relative">
+                              <button
+                                onClick={() => canEdit
+                                  ? setFileStatusMenu(fileStatusMenu === d.id ? null : d.id)
+                                  : undefined}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold"
+                                style={{ background: st.bg, color: st.color }}>
+                                <st.Icon className="w-3 h-3" />{st.label}
+                                {canEdit && <ChevronDown className="w-2.5 h-2.5 ml-0.5" />}
+                              </button>
+                              {canEdit && fileStatusMenu === d.id && (
+                                <div className="absolute top-full right-0 mt-1 rounded-xl overflow-hidden shadow-xl z-30 min-w-44"
+                                  style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.12)' }}>
+                                  <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#86a2b2' }}>Cambiar estado</p>
+                                  {(Object.entries(FILE_STATUS) as [FileStatus, typeof FILE_STATUS[FileStatus]][]).map(([key, cfg]) => (
+                                    <button key={key}
+                                      onClick={() => adminSetFileStatus(d.id, key)}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left"
+                                      style={{ color: cfg.color, background: d.status === key ? cfg.bg : 'transparent' }}>
+                                      <cfg.Icon className="w-3.5 h-3.5" />{cfg.label}
+                                      {d.status === key && <span className="ml-auto text-[10px]">✓</span>}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {/* Consultant: submit */}
                             {!canEdit && d.status === 'pendiente' && (
                               <button onClick={() => submitDoc(d.id)}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold"
@@ -892,6 +891,7 @@ export default function ProyectoRepositorio({
                                 <Send className="w-3 h-3" />Enviar
                               </button>
                             )}
+                            {/* Admin quick approve/reject when en_revision */}
                             {canEdit && d.status === 'en_revision' && (
                               <>
                                 <button onClick={() => approveDoc(d.id)} title="Aprobar"
