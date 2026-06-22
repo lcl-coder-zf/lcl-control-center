@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 
 const DocEditor = dynamic(() => import('./DocEditor'), { ssr: false })
-const OnlyOfficeEditor = dynamic(() => import('./OnlyOfficeEditor'), { ssr: false })
+const OfficeViewer = dynamic(() => import('./OfficeViewer'), { ssr: false })
 
 const OFFICE_EXTS = new Set(['docx', 'doc', 'odt', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp', 'txt', 'rtf'])
 import {
@@ -613,9 +613,8 @@ export default function ProyectoRepositorio({
     return (
       <>
         {RejectModal}
-        <OnlyOfficeEditor
-          documentId={officeFile.id}
-          documentName={officeFile.name}
+        <OfficeViewer
+          doc={officeFile}
           onBack={() => { setViewMode('browser'); setOfficeFile(null); load() }}
         />
       </>
@@ -857,7 +856,7 @@ export default function ProyectoRepositorio({
                               <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{d.name}</p>
                               {isOffice && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
-                                  style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>Editar</span>
+                                  style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>Ver</span>
                               )}
                             </div>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
