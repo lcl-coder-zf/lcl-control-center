@@ -61,6 +61,7 @@ export default function DocumentosPage() {
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -137,17 +138,32 @@ export default function DocumentosPage() {
     })
   }
 
-  function toggleSelect(id: string) {
+  // IDs de archivos uploaded en el orden actual de filtered (para shift+click)
+  const uploadedFilteredIds = useMemo(
+    () => filtered.filter(d => d.kind === 'uploaded').map(d => d.id),
+    [filtered]
+  )
+
+  function toggleSelect(id: string, shiftKey = false) {
+    const idx = uploadedFilteredIds.indexOf(id)
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (shiftKey && lastSelectedIdx !== null && idx !== -1) {
+        const from = Math.min(lastSelectedIdx, idx)
+        const to   = Math.max(lastSelectedIdx, idx)
+        uploadedFilteredIds.slice(from, to + 1).forEach(i => next.add(i))
+      } else {
+        next.has(id) ? next.delete(id) : next.add(id)
+      }
       return next
     })
+    if (idx !== -1) setLastSelectedIdx(idx)
   }
 
   function exitSelectMode() {
     setSelectMode(false)
     setSelected(new Set())
+    setLastSelectedIdx(null)
   }
 
   async function handleBulkDelete() {
@@ -401,7 +417,7 @@ function UnifiedDocRow({ doc, onDeleteUploaded, deleting, selectMode, selected, 
   deleting: string | null
   selectMode?: boolean
   selected?: boolean
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: (id: string, shiftKey: boolean) => void
   style?: React.CSSProperties
 }) {
   const sc = STATUS_CONFIG[doc.status] ?? STATUS_CONFIG.pendiente
@@ -430,7 +446,7 @@ function UnifiedDocRow({ doc, onDeleteUploaded, deleting, selectMode, selected, 
   return (
     <div
       className="flex items-center gap-4 px-5 py-3.5 transition-all"
-      onClick={selectMode && doc.kind === 'uploaded' ? () => onToggleSelect?.(doc.id) : undefined}
+      onClick={selectMode && doc.kind === 'uploaded' ? (e) => onToggleSelect?.(doc.id, e.shiftKey) : undefined}
       style={{
         background: selected ? 'rgba(64,181,250,0.06)' : '#ffffff',
         cursor: selectMode && doc.kind === 'uploaded' ? 'pointer' : 'default',
