@@ -87,7 +87,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
           </button>
         )}
 
-        <main style={{ flex: 1, overflowX: 'hidden' }}>
+        <main style={{ flex: 1, overflowX: 'hidden', paddingLeft: isDesktop && !open ? 56 : 0, transition: 'padding-left 0.3s ease' }}>
           {children}
         </main>
       </div>
