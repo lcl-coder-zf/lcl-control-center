@@ -13,8 +13,6 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024)
     check()
-    // Open sidebar by default on desktop
-    if (window.innerWidth >= 1024) setOpen(true)
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])

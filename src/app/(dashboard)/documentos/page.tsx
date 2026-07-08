@@ -6,6 +6,7 @@ import {
   Plus, FileText, Search, Download, Trash2, Folder, FolderOpen,
   List, LayoutGrid, PenLine, Shield, GitBranch, Users, BarChart3,
   CheckSquare, Clock, Eye, CheckCircle2, XCircle, ExternalLink,
+  MousePointer2, X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
@@ -58,6 +59,8 @@ export default function DocumentosPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [view, setView] = useState<'lista' | 'carpetas'>('carpetas')
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => { fetchAll() }, [])
 
@@ -134,6 +137,39 @@ export default function DocumentosPage() {
     })
   }
 
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false)
+    setSelected(new Set())
+  }
+
+  async function handleBulkDelete() {
+    const deletable = filtered.filter(d => d.kind === 'uploaded' && selected.has(d.id)) as UploadedDoc[]
+    if (!deletable.length) return
+    if (!confirm(`¿Eliminar ${deletable.length} documento${deletable.length !== 1 ? 's' : ''}?`)) return
+    const supabase = createClient()
+    for (const doc of deletable) {
+      if (doc.file_url) {
+        try {
+          const url = new URL(doc.file_url)
+          const pathParts = url.pathname.split('/storage/v1/object/sign/documents/')
+          const storagePath = pathParts[1]?.split('?')[0]
+          if (storagePath) await supabase.storage.from('documents').remove([storagePath])
+        } catch {}
+      }
+      await supabase.from('documents').delete().eq('id', doc.id)
+    }
+    exitSelectMode()
+    fetchAll()
+  }
+
   async function handleDeleteUploaded(id: string, fileUrl: string | null) {
     if (!confirm('¿Eliminar este documento?')) return
     setDeleting(id)
@@ -164,11 +200,23 @@ export default function DocumentosPage() {
             {counts.archivos} archivo{counts.archivos !== 1 ? 's' : ''} · {counts.editables} editable{counts.editables !== 1 ? 's' : ''}
           </p>
         </div>
-        <Link href="/documentos/nuevo"
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
-          style={{ background: '#40b5fa', color: '#ffffff' }}>
-          <Plus className="w-4 h-4" />Subir archivo
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            style={{
+              background: selectMode ? 'rgba(255,107,107,0.10)' : '#f4f7fa',
+              color: selectMode ? '#ff6b6b' : '#6b8fa0',
+              border: `1px solid ${selectMode ? 'rgba(255,107,107,0.25)' : 'rgba(0,40,80,0.10)'}`,
+            }}>
+            {selectMode ? <><X className="w-4 h-4" />Cancelar</> : <><MousePointer2 className="w-4 h-4" />Seleccionar</>}
+          </button>
+          <Link href="/documentos/nuevo"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
+            style={{ background: '#40b5fa', color: '#ffffff' }}>
+            <Plus className="w-4 h-4" />Subir archivo
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
@@ -254,6 +302,38 @@ export default function DocumentosPage() {
         </div>
       </div>
 
+      {/* Bulk actions bar */}
+      {selectMode && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4"
+          style={{ background: 'rgba(64,181,250,0.07)', border: '1px solid rgba(64,181,250,0.18)' }}>
+          <button
+            onClick={() => {
+              const allUploadedIds = filtered.filter(d => d.kind === 'uploaded').map(d => d.id)
+              const allSelected = allUploadedIds.every(id => selected.has(id))
+              if (allSelected) {
+                setSelected(new Set())
+              } else {
+                setSelected(new Set(allUploadedIds))
+              }
+            }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+            style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }}>
+            {filtered.filter(d => d.kind === 'uploaded').every(d => selected.has(d.id)) ? 'Deseleccionar todo' : 'Seleccionar todo'}
+          </button>
+          <span className="text-sm flex-1" style={{ color: '#6b8fa0' }}>
+            {selected.size > 0 ? `${selected.size} seleccionado${selected.size !== 1 ? 's' : ''}` : 'Selecciona documentos para realizar acciones'}
+          </span>
+          {selected.size > 0 && (
+            <button onClick={handleBulkDelete}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+              style={{ background: 'rgba(255,107,107,0.12)', color: '#ff6b6b', border: '1px solid rgba(255,107,107,0.25)' }}>
+              <Trash2 className="w-4 h-4" />
+              Eliminar {selected.size}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Content */}
       {filtered.length === 0 ? (
         <div className="rounded-2xl flex flex-col items-center justify-center py-20"
@@ -288,6 +368,9 @@ export default function DocumentosPage() {
                       <UnifiedDocRow key={doc.id} doc={doc}
                         onDeleteUploaded={handleDeleteUploaded}
                         deleting={deleting}
+                        selectMode={selectMode}
+                        selected={selected.has(doc.id)}
+                        onToggleSelect={toggleSelect}
                         style={{ borderTop: i > 0 ? '1px solid rgba(0,40,80,0.05)' : undefined, paddingLeft: '3.5rem' }} />
                     ))}
                   </div>
@@ -301,7 +384,10 @@ export default function DocumentosPage() {
           {filtered.map(doc => (
             <UnifiedDocRow key={doc.id} doc={doc}
               onDeleteUploaded={handleDeleteUploaded}
-              deleting={deleting} />
+              deleting={deleting}
+              selectMode={selectMode}
+              selected={selected.has(doc.id)}
+              onToggleSelect={toggleSelect} />
           ))}
         </div>
       )}
@@ -309,10 +395,13 @@ export default function DocumentosPage() {
   )
 }
 
-function UnifiedDocRow({ doc, onDeleteUploaded, deleting, style }: {
+function UnifiedDocRow({ doc, onDeleteUploaded, deleting, selectMode, selected, onToggleSelect, style }: {
   doc: AnyDoc
   onDeleteUploaded: (id: string, fileUrl: string | null) => void
   deleting: string | null
+  selectMode?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
   style?: React.CSSProperties
 }) {
   const sc = STATUS_CONFIG[doc.status] ?? STATUS_CONFIG.pendiente
@@ -339,8 +428,25 @@ function UnifiedDocRow({ doc, onDeleteUploaded, deleting, style }: {
     : null
 
   return (
-    <div className="flex items-center gap-4 px-5 py-3.5"
-      style={{ background: '#ffffff', ...style }}>
+    <div
+      className="flex items-center gap-4 px-5 py-3.5 transition-all"
+      onClick={selectMode && doc.kind === 'uploaded' ? () => onToggleSelect?.(doc.id) : undefined}
+      style={{
+        background: selected ? 'rgba(64,181,250,0.06)' : '#ffffff',
+        cursor: selectMode && doc.kind === 'uploaded' ? 'pointer' : 'default',
+        ...style,
+      }}>
+
+      {/* Checkbox (select mode only, uploaded only) */}
+      {selectMode && (
+        <div className="flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all"
+          style={{
+            borderColor: doc.kind === 'uploaded' ? (selected ? '#40b5fa' : 'rgba(0,40,80,0.20)') : 'transparent',
+            background: selected ? '#40b5fa' : 'transparent',
+          }}>
+          {selected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
+        </div>
+      )}
 
       {/* Icon */}
       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
