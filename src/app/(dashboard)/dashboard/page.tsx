@@ -74,7 +74,9 @@ export default function DashboardPage() {
     const done = ts.filter((t: any) => t.status === 'completada').length
     const progress = ts.length > 0 ? Math.round((done / ts.length) * 100) : 0
     return { ...c, progress, total: ts.length }
-  }).sort((a: { progress: number }, b: { progress: number }) => a.progress - b.progress)
+  }).sort((a: { total: number; name: string }, b: { total: number; name: string }) =>
+    // Primero los que tienen tareas; luego alfabético.
+    (b.total > 0 ? 1 : 0) - (a.total > 0 ? 1 : 0) || a.name.localeCompare(b.name))
 
   const conTareas = clientesProgreso.filter((c: { total: number }) => c.total > 0)
   const avgProgress = conTareas.length > 0
@@ -232,9 +234,9 @@ export default function DashboardPage() {
         <h3 className="font-semibold text-sm flex items-center gap-2 mb-5" style={{ color: '#1a2e3b' }}>
           <Building2 className="w-4 h-4" style={{ color: '#40b5fa' }} />Avance por cliente
         </h3>
-        {conTareas.length > 0 ? (
+        {clientesProgreso.length > 0 ? (
           <div className="space-y-3">
-            {conTareas.slice(0, 15).map((c: { id: string; name: string; progress: number; total: number }) => {
+            {clientesProgreso.slice(0, 20).map((c: { id: string; name: string; progress: number; total: number }) => {
               const barColor = c.progress < 30 ? '#ff6b6b' : c.progress < 70 ? '#ffd93d' : '#4ade80'
               return (
                 <Link key={c.id} href={`/clientes/${c.id}`} className="flex items-center gap-4 group">
@@ -250,7 +252,7 @@ export default function DashboardPage() {
             })}
           </div>
         ) : (
-          <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Aún no hay tareas por cliente</p>
+          <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Sin clientes activos</p>
         )}
       </div>
     </div>

@@ -30,7 +30,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
   if (!project) notFound()
 
   const { data: tasks } = await supabase
-    .from('tasks').select('*, profiles(id, full_name)').eq('project_id', id).order('due_date')
+    .from('tasks').select('*, profiles!tasks_assigned_to_fkey(id, full_name)').eq('project_id', id).order('due_date')
 
   const st = STATUS_STYLES[project.status] ?? STATUS_STYLES.activo
   const canEdit = currentProfile?.role === 'admin'

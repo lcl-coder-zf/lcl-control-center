@@ -84,7 +84,7 @@ export default function ProyectoHub({
       recurrence: newTask.task_type === 'recurrente' ? newTask.recurrence : null,
       recurrence_active: newTask.task_type === 'recurrente',
       created_by: userId,
-    }]).select('*, profiles(id, full_name)').single()
+    }]).select('*, profiles!tasks_assigned_to_fkey(id, full_name)').single()
     if (data) {
       setTasks(prev => [...prev, data])
       setNewTask({ title: '', due_date: '', priority: 'media', assigned_to: '', task_type: 'esporadica', recurrence: 'mensual' })

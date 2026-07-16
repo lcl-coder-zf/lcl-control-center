@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Plus, X, Loader2, RefreshCw, CheckCircle2, Circle, ChevronDown, CheckSquare,
@@ -35,6 +35,13 @@ export default function ClienteTareas({ companyId, companyName, initialTasks, pr
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
 
+  // Cargar tareas frescas en el navegador (evita cualquier caché del servidor).
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('tasks').select('*, profiles!tasks_assigned_to_fkey(id, full_name)').eq('company_id', companyId).order('due_date', { ascending: true })
+      .then(({ data }) => { if (data) setTasks(data) })
+  }, [companyId])
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function toggleTask(task: any) {
     const newStatus = task.status === 'completada' ? 'pendiente' : 'completada'
@@ -65,7 +72,7 @@ export default function ClienteTareas({ companyId, companyName, initialTasks, pr
       recurrence: newTask.task_type === 'recurrente' ? newTask.recurrence : null,
       recurrence_active: newTask.task_type === 'recurrente',
       created_by: userId,
-    }]).select('*, profiles(id, full_name)').single()
+    }]).select('*, profiles!tasks_assigned_to_fkey(id, full_name)').single()
     if (data) {
       setTasks(prev => [...prev, data])
       // Notificar al responsable + admins (Laura y Daniel reciben todo).

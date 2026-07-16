@@ -26,7 +26,7 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
   if (!company) notFound()
 
   const [{ data: tasks }, { data: profiles }, { data: currentProfile }] = await Promise.all([
-    supabase.from('tasks').select('*, profiles(id, full_name)').eq('company_id', id).order('due_date', { ascending: true }),
+    supabase.from('tasks').select('*, profiles!tasks_assigned_to_fkey(id, full_name)').eq('company_id', id).order('due_date', { ascending: true }),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('profiles').select('id, role').eq('id', user?.id ?? '').single(),
   ])
