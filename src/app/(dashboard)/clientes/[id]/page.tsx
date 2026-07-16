@@ -22,18 +22,8 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
   const { data: company } = await supabase.from('companies').select('*').eq('id', id).single()
   if (!company) notFound()
 
-  // Hay clientes duplicados (mismo nombre) de cuando existían Proyectos aparte.
-  // Incluimos tareas de cualquier registro con el mismo nombre y de sus proyectos.
-  const { data: sameName } = await supabase.from('companies').select('id').eq('name', company.name)
-  const companyIds = [...new Set([id, ...(sameName ?? []).map(c => c.id)])]
-  const { data: projs } = await supabase.from('projects').select('id').in('company_id', companyIds)
-  const projIds = (projs ?? []).map(p => p.id)
-
-  const orParts = [`company_id.in.(${companyIds.join(',')})`]
-  if (projIds.length > 0) orParts.push(`project_id.in.(${projIds.join(',')})`)
-
   const [{ data: tasks }, { data: profiles }, { data: currentProfile }] = await Promise.all([
-    supabase.from('tasks').select('*, profiles(id, full_name)').or(orParts.join(',')).order('due_date', { ascending: true }),
+    supabase.from('tasks').select('*, profiles(id, full_name)').eq('company_id', id).order('due_date', { ascending: true }),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('profiles').select('id, role').eq('id', user?.id ?? '').single(),
   ])
