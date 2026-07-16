@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS } from '@/lib/tasks'
+import { notify, adminIds } from '@/lib/notify'
 
 interface Props {
   companies: { id: string; name: string }[]
@@ -74,6 +75,18 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
     }])
 
     if (error) { setError('Error: ' + error.message); setLoading(false); return }
+
+    // Notificar al responsable + admins (Laura y Daniel reciben todo).
+    const cliente = companies.find(c => c.id === form.company_id)?.name
+    const admins = await adminIds(supabase)
+    await notify(supabase, {
+      recipientIds: [form.assigned_to, ...admins],
+      type: 'tarea_asignada',
+      message: `Nueva tarea: "${form.title}"${cliente ? ' · ' + cliente : ''}`,
+      link: '/tareas',
+      actorId: user?.id,
+    })
+
     router.push('/tareas')
     router.refresh()
   }

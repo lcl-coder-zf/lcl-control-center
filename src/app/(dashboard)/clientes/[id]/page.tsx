@@ -22,8 +22,17 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
   const { data: company } = await supabase.from('companies').select('*').eq('id', id).single()
   if (!company) notFound()
 
+  // Proyectos de este cliente (para incluir tareas viejas ligadas al proyecto).
+  const { data: projs } = await supabase.from('projects').select('id').eq('company_id', id)
+  const projIds = (projs ?? []).map(p => p.id)
+
+  let taskQuery = supabase.from('tasks').select('*, profiles(id, full_name)').order('due_date', { ascending: true })
+  taskQuery = projIds.length > 0
+    ? taskQuery.or(`company_id.eq.${id},project_id.in.(${projIds.join(',')})`)
+    : taskQuery.eq('company_id', id)
+
   const [{ data: tasks }, { data: profiles }, { data: currentProfile }] = await Promise.all([
-    supabase.from('tasks').select('*, profiles(id, full_name)').eq('company_id', id).order('due_date', { ascending: true }),
+    taskQuery,
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('profiles').select('id, role').eq('id', user?.id ?? '').single(),
   ])
@@ -99,6 +108,7 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
         <div className="lg:col-span-2">
           <ClienteTareas
             companyId={id}
+            companyName={company.name}
             initialTasks={tasks ?? []}
             profiles={profiles ?? []}
             canEdit={canEdit}

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { notify, adminIds } from '@/lib/notify'
 import { ArrowLeft, Loader2, Camera } from 'lucide-react'
 import Link from 'next/link'
 
@@ -61,16 +62,28 @@ export default function NuevoClientePage() {
     let logo_url: string | null = null
     if (logoFile) logo_url = await uploadLogo(logoFile)
 
-    const { error } = await supabase.from('companies').insert([{
+    const { data: nuevo, error } = await supabase.from('companies').insert([{
       name: form.name, nit: form.nit, sector: form.sector, city: form.city,
       contact_name: form.contact_name, contact_email: form.contact_email, contact_phone: form.contact_phone,
       service_type: form.service_type,
       monthly_hours: form.monthly_hours ? parseInt(form.monthly_hours) : null,
       logo_url,
       status: form.status, notes: form.notes,
-    }])
+    }]).select().single()
 
     if (error) { setError('Error al guardar: ' + error.message); setLoading(false); return }
+
+    // Notificar a los admins (Laura y Daniel) del nuevo cliente.
+    const { data: { user } } = await supabase.auth.getUser()
+    const admins = await adminIds(supabase)
+    await notify(supabase, {
+      recipientIds: admins,
+      type: 'cliente_nuevo',
+      message: `Nuevo cliente: ${form.name}`,
+      link: nuevo ? `/clientes/${nuevo.id}` : '/clientes',
+      actorId: user?.id,
+    })
+
     router.push('/clientes')
     router.refresh()
   }

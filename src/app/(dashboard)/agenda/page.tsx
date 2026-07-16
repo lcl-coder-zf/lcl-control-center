@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { daysUntil, formatDate } from '@/lib/utils'
 import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS, nextDueDate, type Recurrence } from '@/lib/tasks'
+import { notify, adminIds } from '@/lib/notify'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   CalendarDays, Gauge, Plus, X, Loader2, Circle, Trash2, RefreshCw,
@@ -243,13 +244,24 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     const event_type = typeChoice === 'otro' ? (customType.trim() || 'Otro') : typeChoice
-    const { data: ev } = await supabase.from('events').insert([{
+    const { data: ev, error } = await supabase.from('events').insert([{
       title, event_type, company_id: companyId || null, organizer_id: user?.id ?? null,
       event_date: date, event_time: time || null, status: 'programado', notas: notas || null,
     }]).select().single()
+    if (error) { setSaving(false); alert('No se pudo crear el evento: ' + error.message); return }
     if (ev && invitees.size > 0) {
       await supabase.from('event_attendees').insert([...invitees].map(pid => ({ event_id: ev.id, profile_id: pid })))
     }
+    // Notificar a invitados + admins (Laura y Daniel reciben todo).
+    const admins = await adminIds(supabase)
+    const fecha = new Date(date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
+    await notify(supabase, {
+      recipientIds: [...invitees, ...admins],
+      type: 'evento_invitado',
+      message: `Evento "${title}" el ${fecha}${time ? ' ' + time : ''}`,
+      link: '/agenda',
+      actorId: user?.id,
+    })
     setSaving(false)
     onSaved()
   }
@@ -339,15 +351,18 @@ function Indicadores({ indicators, profiles, companies, reload }: { indicators: 
   const [saving, setSaving] = useState(false)
 
   async function add() {
-    if (!form.title.trim() || !form.due_date) return
+    if (!form.title.trim()) { alert('Escribe el nombre del indicador.'); return }
+    if (!form.due_date) { alert('Elige la fecha de la próxima entrega.'); return }
     setSaving(true)
     const supabase = createClient()
-    await supabase.from('indicators').insert([{
+    const { error } = await supabase.from('indicators').insert([{
       title: form.title, responsable_id: form.responsable_id || null, company_id: form.company_id || null,
       frequency: form.frequency, due_date: form.due_date, status: 'pendiente', notas: form.notas || null,
     }])
+    setSaving(false)
+    if (error) { alert('No se pudo guardar el indicador: ' + error.message); return }
     setForm({ title: '', responsable_id: '', company_id: '', frequency: 'mensual', due_date: '', notas: '' })
-    setShowNew(false); setSaving(false); reload()
+    setShowNew(false); reload()
   }
   async function toggle(ind: Row) {
     const supabase = createClient()

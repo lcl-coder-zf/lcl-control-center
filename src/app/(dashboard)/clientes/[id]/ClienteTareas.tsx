@@ -6,6 +6,7 @@ import {
   Plus, X, Loader2, RefreshCw, CheckCircle2, Circle, ChevronDown, CheckSquare,
 } from 'lucide-react'
 import { regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence } from '@/lib/tasks'
+import { notify, adminIds } from '@/lib/notify'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',   label: 'Baja' },
@@ -16,6 +17,7 @@ const PRIORITY = {
 
 interface Props {
   companyId: string
+  companyName: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   initialTasks: any[]
   profiles: { id: string; full_name: string }[]
@@ -23,7 +25,7 @@ interface Props {
   userId: string
 }
 
-export default function ClienteTareas({ companyId, initialTasks, profiles, canEdit, userId }: Props) {
+export default function ClienteTareas({ companyId, companyName, initialTasks, profiles, canEdit, userId }: Props) {
   const [tasks, setTasks] = useState(initialTasks)
   const [showNewTask, setShowNewTask] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', due_date: '', priority: 'media', assigned_to: '', task_type: 'esporadica', recurrence: 'mensual' })
@@ -66,6 +68,15 @@ export default function ClienteTareas({ companyId, initialTasks, profiles, canEd
     }]).select('*, profiles(id, full_name)').single()
     if (data) {
       setTasks(prev => [...prev, data])
+      // Notificar al responsable + admins (Laura y Daniel reciben todo).
+      const admins = await adminIds(supabase)
+      await notify(supabase, {
+        recipientIds: [data.assigned_to, ...admins],
+        type: 'tarea_asignada',
+        message: `Nueva tarea: "${data.title}" · ${companyName}`,
+        link: `/clientes/${companyId}`,
+        actorId: userId,
+      })
       setNewTask({ title: '', due_date: '', priority: 'media', assigned_to: '', task_type: 'esporadica', recurrence: 'mensual' })
       setShowNewTask(false)
     }

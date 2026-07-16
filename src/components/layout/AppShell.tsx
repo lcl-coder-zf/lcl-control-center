@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Menu } from 'lucide-react'
 import Image from 'next/image'
 import Sidebar from './Sidebar'
+import NotificationBell from './NotificationBell'
 import type { Profile } from '@/types'
 
 export default function AppShell({ profile, children }: { profile: Profile; children: React.ReactNode }) {
@@ -39,6 +40,9 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         onClose={() => setOpen(false)}
         onToggle={() => setOpen(o => !o)}
       />
+
+      {/* Campana de notificaciones (fija arriba a la derecha) */}
+      <NotificationBell />
 
       {/* Main content */}
       <div style={{
