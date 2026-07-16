@@ -82,7 +82,7 @@ export default function ProyectoHub({
       status: 'pendiente',
       task_type: newTask.task_type,
       recurrence: newTask.task_type === 'recurrente' ? newTask.recurrence : null,
-      recurrence_active: newTask.task_type === 'recurrente' ? true : null,
+      recurrence_active: newTask.task_type === 'recurrente',
       created_by: userId,
     }]).select('*, profiles(id, full_name)').single()
     if (data) {

@@ -69,7 +69,7 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
       due_date: form.due_date,
       task_type: form.task_type,
       recurrence: form.task_type === 'recurrente' ? form.recurrence : null,
-      recurrence_active: form.task_type === 'recurrente' ? true : null,
+      recurrence_active: form.task_type === 'recurrente',
       created_by: user?.id,
     }])
 
