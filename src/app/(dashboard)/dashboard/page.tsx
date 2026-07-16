@@ -6,7 +6,7 @@ import { daysUntil } from '@/lib/utils'
 import { ROLE_LABELS } from '@/types'
 import {
   Building2, FolderKanban, AlertTriangle, CalendarClock,
-  FileCheck, TrendingUp, Users, CheckCircle2,
+  TrendingUp, Users, CheckCircle2,
 } from 'lucide-react'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 
@@ -38,15 +38,13 @@ export default function DashboardPage() {
         .lte('due_date', nextWeek)
         .order('due_date')
         .limit(8),
-      supabase.from('documents').select('id', { count: 'exact' }).eq('status', 'en_revision'),
       supabase.from('profiles').select('id, full_name, email, role'),
-    ]).then(([clientes, proyectos, atrasadas, proximas, docsRevision, perfiles]) => {
+    ]).then(([clientes, proyectos, atrasadas, proximas, perfiles]) => {
       setData({
         totalClientes: clientes.count ?? 0,
         proyectos: proyectos.data ?? [],
         tareasAtrasadas: atrasadas.data ?? [],
         tareasProximas: proximas.data ?? [],
-        docsEnRevision: docsRevision.count ?? 0,
         profiles: perfiles.data ?? [],
       })
     })
@@ -64,7 +62,6 @@ export default function DashboardPage() {
     { label: 'Avance promedio',    value: `${avgProgress}%`,           icon: TrendingUp,    color: '#4ade80', bg: 'rgba(74,222,128,0.10)' },
     { label: 'Tareas atrasadas',   value: data.tareasAtrasadas.length, icon: AlertTriangle, color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)' },
     { label: 'Vencen esta semana', value: data.tareasProximas.length,  icon: CalendarClock, color: '#ffd93d', bg: 'rgba(255,217,61,0.10)' },
-    { label: 'Docs en revisión',   value: data.docsEnRevision,         icon: FileCheck,     color: '#a78bfa', bg: 'rgba(167,139,250,0.10)' },
   ]
 
   return (

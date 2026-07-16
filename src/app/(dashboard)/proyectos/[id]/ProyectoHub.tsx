@@ -3,10 +3,9 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  CheckSquare, FileText, Plus, X, Loader2,
+  Plus, X, Loader2,
   CheckCircle2, Circle, ChevronDown,
 } from 'lucide-react'
-import ProyectoRepositorio from './ProyectoRepositorio'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',   label: 'Baja' },
@@ -28,8 +27,6 @@ interface Props {
 export default function ProyectoHub({
   projectId, companyId, initialProgress, initialTasks, profiles, canEdit, userId,
 }: Props) {
-  const [tab, setTab] = useState<'tareas' | 'documentos'>('tareas')
-
   // Progress
   const [progress, setProgress] = useState(initialProgress)
   const [savingProgress, setSavingProgress] = useState(false)
@@ -124,7 +121,6 @@ export default function ProyectoHub({
 
   const topLevelTasks = tasks.filter((t: any) => !t.parent_id)
   const getSubtasks = (parentId: string) => tasks.filter((t: any) => t.parent_id === parentId)
-  const doneTasks = topLevelTasks.filter((t: any) => t.status === 'completada').length
 
   return (
     <div>
@@ -156,27 +152,8 @@ export default function ProyectoHub({
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {([
-          { id: 'tareas',     icon: CheckSquare, label: `Tareas (${doneTasks}/${topLevelTasks.length})` },
-          { id: 'documentos', icon: FileText,     label: 'Documentos' },
-        ] as const).map(({ id, icon: Icon, label }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
-            style={{
-              background: tab === id ? 'rgba(64,181,250,0.12)' : '#f4f7fa',
-              color: tab === id ? '#40b5fa' : '#6b8fa0',
-              border: `1px solid ${tab === id ? 'rgba(64,181,250,0.3)' : 'rgba(0,40,80,0.08)'}`,
-            }}>
-            <Icon className="w-4 h-4" />{label}
-          </button>
-        ))}
-      </div>
-
       {/* Panel Tareas */}
-      {tab === 'tareas' && (
-        <div className="rounded-2xl p-5" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+      <div className="rounded-2xl p-5" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#40b5fa' }}>Tareas</p>
             <button onClick={() => setShowNewTask(!showNewTask)}
@@ -362,18 +339,7 @@ export default function ProyectoHub({
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Panel Documentos (archivos + editables unificados) */}
-      {tab === 'documentos' && (
-        <ProyectoRepositorio
-          projectId={projectId}
-          companyId={companyId}
-          canEdit={canEdit}
-          userId={userId}
-        />
-      )}
+      </div>
     </div>
   )
 }
