@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Building2, FolderKanban, CheckSquare,
-  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound,
+  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
@@ -30,9 +30,11 @@ export default function Sidebar({ profile, isOpen, onClose, onToggle }: SidebarP
   const pathname = usePathname()
   const router = useRouter()
 
-  // Vault solo para admins (Laura y Daniel).
+  // Vault y Configuración solo para admins (Laura y Daniel).
   const navItems = profile.role === 'admin'
-    ? [...NAV_ITEMS, { href: '/vault', icon: KeyRound, label: 'Vault' }]
+    ? [...NAV_ITEMS,
+       { href: '/vault', icon: KeyRound, label: 'Vault' },
+       { href: '/configuracion', icon: Settings, label: 'Configuración' }]
     : NAV_ITEMS
 
   async function handleLogout() {
