@@ -4,14 +4,13 @@ import NuevaTareaForm from './NuevaTareaForm'
 export default async function NuevaTareaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ proyecto?: string; cliente?: string }>
+  searchParams: Promise<{ cliente?: string }>
 }) {
-  const { proyecto, cliente } = await searchParams
+  const { cliente } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: companies }, { data: projects }, { data: profiles }, { data: user }] = await Promise.all([
+  const [{ data: companies }, { data: profiles }, { data: user }] = await Promise.all([
     supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
-    supabase.from('projects').select('id, name, company_id').eq('status', 'activo').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.auth.getUser(),
   ])
@@ -22,9 +21,7 @@ export default async function NuevaTareaPage({
   return (
     <NuevaTareaForm
       companies={companies ?? []}
-      projects={projects ?? []}
       profiles={profiles ?? []}
-      defaultProjectId={proyecto}
       defaultClienteId={cliente}
       currentUserId={currentProfile?.id}
     />

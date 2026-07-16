@@ -302,7 +302,7 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
 
           <Field label="Cliente">
             <select value={companyId} onChange={e => setCompanyId(e.target.value)} className={INP} style={INPS}>
-              <option value="">Sin cliente</option>
+              <option value="">LCL (interno)</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
@@ -405,7 +405,7 @@ function Indicadores({ indicators, profiles, companies, reload }: { indicators: 
             </Field>
             <Field label="Cliente">
               <select value={form.company_id} onChange={e => setForm(p => ({ ...p, company_id: e.target.value }))} className={INP} style={INPS}>
-                <option value="">Sin cliente</option>
+                <option value="">LCL (interno)</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </Field>

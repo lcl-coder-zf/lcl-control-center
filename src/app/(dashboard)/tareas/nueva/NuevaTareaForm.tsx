@@ -10,14 +10,12 @@ import { notify, adminIds } from '@/lib/notify'
 
 interface Props {
   companies: { id: string; name: string }[]
-  projects: { id: string; name: string; company_id: string }[]
   profiles: { id: string; full_name: string }[]
-  defaultProjectId?: string
   defaultClienteId?: string
   currentUserId?: string
 }
 
-export default function NuevaTareaForm({ companies, projects, profiles, defaultProjectId, defaultClienteId, currentUserId }: Props) {
+export default function NuevaTareaForm({ companies, profiles, defaultClienteId, currentUserId }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -25,7 +23,6 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
     title: '',
     description: '',
     company_id: defaultClienteId ?? '',
-    project_id: defaultProjectId ?? '',
     assigned_to: currentUserId ?? '',
     priority: 'media',
     status: 'pendiente',
@@ -34,18 +31,8 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
     recurrence: 'mensual',
   })
 
-  // Filtrar proyectos según cliente seleccionado
-  const filteredProjects = form.company_id
-    ? projects.filter(p => p.company_id === form.company_id)
-    : projects
-
   function set(field: string, value: string) {
-    setForm(prev => {
-      const next = { ...prev, [field]: value }
-      // Si cambia cliente, limpiar proyecto si no pertenece
-      if (field === 'company_id') next.project_id = ''
-      return next
-    })
+    setForm(prev => ({ ...prev, [field]: value }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -63,7 +50,6 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
       title: form.title,
       description: form.description || null,
       company_id: form.company_id || null,
-      project_id: form.project_id || null,
       assigned_to: form.assigned_to,
       priority: form.priority,
       status: form.status,
@@ -164,13 +150,9 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
             <option value="">Seleccionar persona...</option>
             {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
           </Sel>
-          <Sel label="Cliente (opcional)" value={form.company_id} onChange={v => set('company_id', v)}>
-            <option value="">Sin cliente</option>
+          <Sel label="Cliente" value={form.company_id} onChange={v => set('company_id', v)}>
+            <option value="">LCL (interno)</option>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Sel>
-          <Sel label="Proyecto (opcional)" value={form.project_id} onChange={v => set('project_id', v)}>
-            <option value="">Sin proyecto</option>
-            {filteredProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Sel>
         </Card>
 
