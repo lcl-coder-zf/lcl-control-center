@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS } from '@/lib/tasks'
 
 interface Props {
   companies: { id: string; name: string }[]
@@ -28,6 +29,8 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
     priority: 'media',
     status: 'pendiente',
     due_date: '',
+    task_type: 'esporadica',
+    recurrence: 'mensual',
   })
 
   // Filtrar proyectos según cliente seleccionado
@@ -64,6 +67,9 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
       priority: form.priority,
       status: form.status,
       due_date: form.due_date,
+      task_type: form.task_type,
+      recurrence: form.task_type === 'recurrente' ? form.recurrence : null,
+      recurrence_active: form.task_type === 'recurrente' ? true : null,
       created_by: user?.id,
     }])
 
@@ -105,8 +111,38 @@ export default function NuevaTareaForm({ companies, projects, profiles, defaultP
               <option value="alta">🟠 Alta</option>
               <option value="critica">🔴 Crítica</option>
             </Sel>
-            <Fi label="Fecha límite *" value={form.due_date} onChange={v => set('due_date', v)} type="date" />
+            <Fi label={form.task_type === 'recurrente' ? 'Primera fecha *' : 'Fecha límite *'} value={form.due_date} onChange={v => set('due_date', v)} type="date" />
           </div>
+
+          {/* Tipo de tarea */}
+          <div>
+            <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>Tipo</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { id: 'esporadica', label: 'Esporádica', sub: 'Una sola vez' },
+                { id: 'recurrente', label: 'Recurrente', sub: 'Se repite' },
+              ] as const).map(o => (
+                <button key={o.id} type="button" onClick={() => set('task_type', o.id)}
+                  className="px-4 py-2.5 rounded-xl text-left transition-all"
+                  style={{
+                    background: form.task_type === o.id ? 'rgba(64,181,250,0.10)' : '#f4f7fa',
+                    border: `1px solid ${form.task_type === o.id ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}`,
+                  }}>
+                  <span className="block text-sm font-semibold" style={{ color: form.task_type === o.id ? '#40b5fa' : '#1a2e3b' }}>{o.label}</span>
+                  <span className="block text-[11px]" style={{ color: '#6b8fa0' }}>{o.sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Frecuencia (solo recurrente) */}
+          {form.task_type === 'recurrente' && (
+            <Sel label="Frecuencia" value={form.recurrence} onChange={v => set('recurrence', v)}>
+              {RECURRENCE_OPTIONS.map(r => (
+                <option key={r} value={r}>{RECURRENCE_CONFIG[r].label}</option>
+              ))}
+            </Sel>
+          )}
         </Card>
 
         {/* Asignación */}

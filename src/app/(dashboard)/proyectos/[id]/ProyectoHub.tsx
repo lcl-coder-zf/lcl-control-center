@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  Plus, X, Loader2,
+  Plus, X, Loader2, RefreshCw,
   CheckCircle2, Circle, ChevronDown,
 } from 'lucide-react'
+import { regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence } from '@/lib/tasks'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',   label: 'Baja' },
@@ -35,7 +36,7 @@ export default function ProyectoHub({
   // Tasks
   const [tasks, setTasks] = useState(initialTasks)
   const [showNewTask, setShowNewTask] = useState(false)
-  const [newTask, setNewTask] = useState({ title: '', due_date: '', priority: 'media', assigned_to: '' })
+  const [newTask, setNewTask] = useState({ title: '', due_date: '', priority: 'media', assigned_to: '', task_type: 'esporadica', recurrence: 'mensual' })
   const [addingTask, setAddingTask] = useState(false)
 
   // Subtasks
@@ -55,8 +56,16 @@ export default function ProyectoHub({
   async function toggleTask(task: any) {
     const newStatus = task.status === 'completada' ? 'en_progreso' : 'completada'
     const supabase = createClient()
-    await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
+    await supabase.from('tasks').update({
+      status: newStatus,
+      completed_at: newStatus === 'completada' ? new Date().toISOString() : null,
+    }).eq('id', task.id)
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t))
+    // Al completar una recurrente activa, genera la siguiente ocurrencia.
+    if (newStatus === 'completada') {
+      const created = await regenerateIfRecurring(supabase, task)
+      if (created) setTasks(prev => [...prev, created])
+    }
   }
 
   async function addTask() {
@@ -71,11 +80,14 @@ export default function ProyectoHub({
       priority: newTask.priority,
       assigned_to: newTask.assigned_to || userId,
       status: 'pendiente',
+      task_type: newTask.task_type,
+      recurrence: newTask.task_type === 'recurrente' ? newTask.recurrence : null,
+      recurrence_active: newTask.task_type === 'recurrente' ? true : null,
       created_by: userId,
-    }]).select().single()
+    }]).select('*, profiles(id, full_name)').single()
     if (data) {
       setTasks(prev => [...prev, data])
-      setNewTask({ title: '', due_date: '', priority: 'media', assigned_to: '' })
+      setNewTask({ title: '', due_date: '', priority: 'media', assigned_to: '', task_type: 'esporadica', recurrence: 'mensual' })
       setShowNewTask(false)
     }
     setAddingTask(false)
@@ -194,6 +206,28 @@ export default function ProyectoHub({
                   {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
                 </select>
               </div>
+              {/* Tipo + frecuencia */}
+              <div className="flex gap-2">
+                {(['esporadica', 'recurrente'] as const).map(tt => (
+                  <button key={tt} type="button" onClick={() => setNewTask(p => ({ ...p, task_type: tt }))}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
+                    style={{
+                      background: newTask.task_type === tt ? 'rgba(64,181,250,0.12)' : '#fff',
+                      color: newTask.task_type === tt ? '#40b5fa' : '#6b8fa0',
+                      border: `1px solid ${newTask.task_type === tt ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}`,
+                    }}>
+                    {tt === 'esporadica' ? 'Esporádica' : 'Recurrente'}
+                  </button>
+                ))}
+                {newTask.task_type === 'recurrente' && (
+                  <select value={newTask.recurrence}
+                    onChange={e => setNewTask(p => ({ ...p, recurrence: e.target.value }))}
+                    className="px-3 py-2 rounded-xl text-xs outline-none"
+                    style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }}>
+                    {RECURRENCE_OPTIONS.map(r => <option key={r} value={r}>{RECURRENCE_CONFIG[r].label}</option>)}
+                  </select>
+                )}
+              </div>
               <div className="flex gap-2">
                 <button onClick={() => setShowNewTask(false)}
                   className="flex-1 py-2 rounded-xl text-xs font-semibold"
@@ -238,6 +272,12 @@ export default function ProyectoHub({
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className="text-[10px] px-2 py-0.5 rounded-full"
                             style={{ background: pr.bg, color: pr.color }}>{pr.label}</span>
+                          {t.task_type === 'recurrente' && t.recurrence && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                              style={{ background: 'rgba(52,211,153,0.10)', color: '#059669' }}>
+                              <RefreshCw className="w-2.5 h-2.5" />{RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Recurrente'}
+                            </span>
+                          )}
                           {t.due_date && (
                             <span className="text-[10px]" style={{ color: '#6b8fa0' }}>
                               {new Date(t.due_date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}

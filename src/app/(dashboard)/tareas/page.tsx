@@ -14,6 +14,7 @@ export default function TareasPage() {
   const [status, setStatus] = useState('todas')
   const [prioridad, setPrioridad] = useState('todas')
   const [asignado, setAsignado] = useState('todas')
+  const [tipo, setTipo] = useState('todas')
 
   useEffect(() => {
     const supabase = createClient()
@@ -34,9 +35,10 @@ export default function TareasPage() {
       const matchStatus = status === 'todas' || t.status === status
       const matchPrioridad = prioridad === 'todas' || t.priority === prioridad
       const matchAsignado = asignado === 'todas' || t.assigned_to === asignado
-      return matchStatus && matchPrioridad && matchAsignado
+      const matchTipo = tipo === 'todas' || (tipo === 'recurrente' ? t.task_type === 'recurrente' : t.task_type !== 'recurrente')
+      return matchStatus && matchPrioridad && matchAsignado && matchTipo
     })
-  }, [tasks, status, prioridad, asignado])
+  }, [tasks, status, prioridad, asignado, tipo])
 
   const counts = {
     pendiente:   tasks.filter(t => t.status === 'pendiente').length,
@@ -111,6 +113,24 @@ export default function TareasPage() {
               border: `1px solid ${prioridad === p ? `${pColors[p] ?? '#40b5fa'}40` : 'rgba(0,40,80,0.08)'}`,
             }}>
             {p}
+          </button>
+        ))}
+
+        <div className="w-px" style={{ background: 'rgba(0,40,80,0.10)' }} />
+
+        {[
+          { id: 'todas', label: 'Todas' },
+          { id: 'recurrente', label: '↻ Recurrentes' },
+          { id: 'esporadica', label: 'Esporádicas' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTipo(t.id)}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+            style={{
+              background: tipo === t.id ? 'rgba(52,211,153,0.15)' : '#f4f7fa',
+              color: tipo === t.id ? '#059669' : '#6b8fa0',
+              border: `1px solid ${tipo === t.id ? 'rgba(52,211,153,0.35)' : 'rgba(0,40,80,0.08)'}`,
+            }}>
+            {t.label}
           </button>
         ))}
 

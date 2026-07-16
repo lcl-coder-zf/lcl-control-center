@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckSquare, Clock, AlertTriangle, Check, Loader2 } from 'lucide-react'
+import { CheckSquare, Clock, AlertTriangle, Check, Loader2, RefreshCw } from 'lucide-react'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { regenerateIfRecurring, RECURRENCE_CONFIG, type Recurrence } from '@/lib/tasks'
 
 const PRIORITY_STYLES: Record<string, { color: string; bg: string; label: string }> = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',  label: 'Baja' },
@@ -22,14 +23,16 @@ const STATUS_STYLES: Record<string, { color: string; bg: string }> = {
 export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefresh?: () => void }) {
   const [completing, setCompleting] = useState<string | null>(null)
 
-  async function markComplete(id: string, current: string) {
-    if (current === 'completada') return
-    setCompleting(id)
+  async function markComplete(task: any) {
+    if (task.status === 'completada') return
+    setCompleting(task.id)
     const supabase = createClient()
     await supabase.from('tasks').update({
       status: 'completada',
       completed_at: new Date().toISOString(),
-    }).eq('id', id)
+    }).eq('id', task.id)
+    // Si es recurrente y activa, genera la siguiente ocurrencia.
+    await regenerateIfRecurring(supabase, task)
     setCompleting(null)
     onRefresh?.()
   }
@@ -65,7 +68,7 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
 
             {/* Checkbox */}
             <button
-              onClick={() => markComplete(t.id, t.status)}
+              onClick={() => markComplete(t)}
               disabled={isCompleta || completing === t.id}
               className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 transition-all"
               style={{
@@ -92,6 +95,12 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
                 {t.title}
               </p>
               <div className="flex items-center gap-3 flex-wrap">
+                {t.task_type === 'recurrente' && t.recurrence && (
+                  <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                    style={{ background: 'rgba(52,211,153,0.10)', color: '#059669' }}>
+                    <RefreshCw className="w-3 h-3" />{RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Recurrente'}
+                  </span>
+                )}
                 {t.companies?.name && (
                   <span className="text-xs" style={{ color: '#6b8fa0' }}>{t.companies.name}</span>
                 )}
