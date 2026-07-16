@@ -92,6 +92,7 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() })
   const [selected, setSelected] = useState<string>(dateKey(today.getFullYear(), today.getMonth(), today.getDate()))
   const [showNew, setShowNew] = useState(false)
+  const [detail, setDetail] = useState<Row | null>(null)
 
   // Grid del mes (semana inicia lunes).
   const first = new Date(cursor.y, cursor.m, 1)
@@ -156,7 +157,11 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
                   style={{ background: isToday ? '#40b5fa' : 'transparent', color: isToday ? '#fff' : '#1a2e3b' }}>{day}</span>
                 {dayEvents.slice(0, 2).map(e => {
                   const ts = typeStyle(e.event_type)
-                  return <span key={e.id} className="text-[9px] px-1 py-0.5 rounded truncate" style={{ background: ts.bg, color: ts.color }}>{e.title}</span>
+                  return (
+                    <span key={e.id} onClick={(ev) => { ev.stopPropagation(); setDetail(e) }}
+                      className="text-[9px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80"
+                      style={{ background: ts.bg, color: ts.color }}>{e.title}</span>
+                  )
                 })}
                 {dayEvents.length > 2 && <span className="text-[9px]" style={{ color: '#86a2b2' }}>+{dayEvents.length - 2}</span>}
               </button>
@@ -187,9 +192,9 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
                   <button onClick={() => toggle(ev)} className="flex-shrink-0 mt-0.5" title={done ? 'Marcar programado' : 'Marcar hecho'}>
                     {done ? <CheckCircle2 className="w-5 h-5" style={{ color: '#4ade80' }} /> : <Circle className="w-5 h-5" style={{ color: '#86a2b2' }} />}
                   </button>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setDetail(ev)}>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium" style={{ color: '#1a2e3b', textDecoration: done ? 'line-through' : 'none' }}>{ev.title}</span>
+                      <span className="text-sm font-medium hover:underline" style={{ color: '#1a2e3b', textDecoration: done ? 'line-through' : 'none' }}>{ev.title}</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: ts.bg, color: ts.color }}>{ts.label}</span>
                       {ev.event_time && <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}><Clock className="w-3 h-3" />{ev.event_time.slice(0, 5)}</span>}
                     </div>
@@ -213,10 +218,68 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
         )}
       </div>
 
+      {detail && (
+        <EventoDetalle ev={detail} onClose={() => setDetail(null)}
+          onToggle={async () => { await toggle(detail); setDetail(null) }}
+          onDelete={async () => { if (confirm('¿Eliminar este evento?')) { await del(detail.id); setDetail(null) } }} />
+      )}
+
       {showNew && (
         <NuevoEvento defaultDate={selected} profiles={profiles} companies={companies}
           onClose={() => setShowNew(false)} onSaved={() => { setShowNew(false); reload() }} />
       )}
+    </div>
+  )
+}
+
+// Detalle de un evento (al hacer clic).
+function EventoDetalle({ ev, onClose, onToggle, onDelete }: { ev: Row; onClose: () => void; onToggle: () => void; onDelete: () => void }) {
+  const ts = typeStyle(ev.event_type)
+  const done = ev.status === 'hecho'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const attendees = (ev.event_attendees ?? []).map((a: any) => a.profiles?.full_name).filter(Boolean)
+  const fecha = new Date(ev.event_date + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between px-5 py-4 border-b" style={{ borderColor: '#e2e8f5' }}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: ts.bg, color: ts.color }}>{ts.label}</span>
+            {done && <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>Hecho</span>}
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#9aaac8] hover:bg-[#f4f7fa]"><X size={14} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <h2 className="text-lg font-black" style={{ color: '#1a2e3b' }}>{ev.title}</h2>
+          <div className="flex items-center gap-2 text-sm" style={{ color: '#4a5a6b' }}>
+            <CalendarDays className="w-4 h-4" style={{ color: '#40b5fa' }} />
+            <span className="capitalize">{fecha}</span>
+            {ev.event_time && <><Clock className="w-4 h-4 ml-2" style={{ color: '#40b5fa' }} />{ev.event_time.slice(0, 5)}</>}
+          </div>
+          {ev.companies?.name && (
+            <div className="flex items-center gap-2 text-sm" style={{ color: '#4a5a6b' }}>
+              <Building2 className="w-4 h-4" style={{ color: '#40b5fa' }} />{ev.companies.name}
+            </div>
+          )}
+          {attendees.length > 0 && (
+            <div className="flex items-start gap-2 text-sm" style={{ color: '#4a5a6b' }}>
+              <Users className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#a78bfa' }} />
+              <span>{attendees.join(', ')}</span>
+            </div>
+          )}
+          {ev.notas && (
+            <div className="rounded-xl p-3 text-sm" style={{ background: '#f4f7fa', color: '#4a5a6b' }}>{ev.notas}</div>
+          )}
+        </div>
+        <div className="flex gap-3 px-5 pb-5">
+          <button onClick={onDelete} className="px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1.5" style={{ background: 'rgba(255,107,107,0.10)', color: '#ff6b6b' }}>
+            <Trash2 className="w-4 h-4" />Eliminar
+          </button>
+          <button onClick={onToggle} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: done ? '#86a2b2' : '#4ade80' }}>
+            {done ? 'Marcar programado' : 'Marcar como hecho'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
