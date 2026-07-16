@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   CheckSquare, Clock, AlertTriangle, Check, Loader2, RefreshCw,
-  ChevronDown, Plus, X, CornerDownRight,
+  ChevronDown, Plus, X, CornerDownRight, Trash2,
 } from 'lucide-react'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -77,6 +77,15 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
   async function deleteSubtask(id: string) {
     const supabase = createClient()
     await supabase.from('tasks').delete().eq('id', id)
+    onRefresh?.()
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function deleteTask(task: any) {
+    if (!confirm(`¿Eliminar la tarea "${task.title}" y sus subtareas?`)) return
+    const supabase = createClient()
+    // Borra la tarea y cualquier subtarea suya.
+    await supabase.from('tasks').delete().or(`id.eq.${task.id},parent_id.eq.${task.id}`)
     onRefresh?.()
   }
 
@@ -197,6 +206,10 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
                       : <><Clock className="w-3 h-3" />{days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>
                   }
                 </div>
+                <button onClick={() => deleteTask(t)} title="Eliminar tarea"
+                  className="p-1 rounded-lg opacity-30 hover:opacity-100 transition-opacity" style={{ color: '#ff6b6b' }}>
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
 
