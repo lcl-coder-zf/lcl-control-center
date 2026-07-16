@@ -7,6 +7,9 @@ import { formatDate } from '@/lib/utils'
 import ClienteActions from './ClienteActions'
 import ClienteTareas from './ClienteTareas'
 
+// Sin caché: siempre traer las tareas frescas del cliente.
+export const dynamic = 'force-dynamic'
+
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   activo:    { bg: 'rgba(74,222,128,0.10)',  color: '#4ade80', label: 'Activo' },
   inactivo:  { bg: 'rgba(134,162,178,0.10)', color: '#86a2b2', label: 'Inactivo' },
