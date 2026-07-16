@@ -1,67 +1,83 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { daysUntil } from '@/lib/utils'
+import { daysUntil, formatDate } from '@/lib/utils'
 import { ROLE_LABELS } from '@/types'
+import { RECURRENCE_CONFIG, regenerateIfRecurring, type Recurrence } from '@/lib/tasks'
 import {
   Building2, FolderKanban, AlertTriangle, CalendarClock,
-  TrendingUp, Users, CheckCircle2,
+  TrendingUp, Users, CheckCircle2, CheckSquare, Circle,
+  Clock, RefreshCw, Loader2, ArrowRight,
 } from 'lucide-react'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 
-const PRIORITY_COLOR: Record<string, string> = {
-  baja: '#4ade80', media: '#ffd93d', alta: '#fb923c', critica: '#ff6b6b',
+const PRIORITY = {
+  baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)', label: 'Baja' },
+  media:   { color: '#ffd93d', bg: 'rgba(255,217,61,0.10)', label: 'Media' },
+  alta:    { color: '#fb923c', bg: 'rgba(251,146,60,0.10)', label: 'Alta' },
+  critica: { color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)', label: 'Crítica' },
 }
 
+const TASK_SELECT = '*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name)'
+
 export default function DashboardPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any>(null)
+  const [completing, setCompleting] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     const supabase = createClient()
-    const today = new Date().toISOString().split('T')[0]
-    const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
-
-    Promise.all([
+    const [clientes, proyectos, tareas, perfiles] = await Promise.all([
       supabase.from('companies').select('id', { count: 'exact' }).eq('status', 'activo'),
       supabase.from('projects').select('id, name, progress').eq('status', 'activo').order('progress', { ascending: true }),
-      supabase.from('tasks')
-        .select('id, title, due_date, priority')
-        .neq('status', 'completada')
-        .lt('due_date', today)
-        .order('due_date')
-        .limit(8),
-      supabase.from('tasks')
-        .select('id, title, due_date, priority')
-        .neq('status', 'completada')
-        .gte('due_date', today)
-        .lte('due_date', nextWeek)
-        .order('due_date')
-        .limit(8),
-      supabase.from('profiles').select('id, full_name, email, role'),
-    ]).then(([clientes, proyectos, atrasadas, proximas, perfiles]) => {
-      setData({
-        totalClientes: clientes.count ?? 0,
-        proyectos: proyectos.data ?? [],
-        tareasAtrasadas: atrasadas.data ?? [],
-        tareasProximas: proximas.data ?? [],
-        profiles: perfiles.data ?? [],
-      })
+      // Tareas activas (pendientes/en progreso), solo principales, ordenadas por vencimiento.
+      supabase.from('tasks').select(TASK_SELECT).neq('status', 'completada').is('parent_id', null).order('due_date', { ascending: true }),
+      supabase.from('profiles').select('id, full_name, email, role').order('full_name'),
+    ])
+    setData({
+      totalClientes: clientes.count ?? 0,
+      proyectos: proyectos.data ?? [],
+      activeTasks: tareas.data ?? [],
+      profiles: perfiles.data ?? [],
     })
   }, [])
 
+  useEffect(() => { load() }, [load])
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function markComplete(task: any) {
+    setCompleting(task.id)
+    const supabase = createClient()
+    await supabase.from('tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', task.id)
+    await regenerateIfRecurring(supabase, task)
+    await load()
+    setCompleting(null)
+  }
+
   if (!data) return <DashboardSkeleton />
 
+  const active = data.activeTasks
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const atrasadas = active.filter((t: any) => daysUntil(t.due_date) < 0)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hoy = active.filter((t: any) => daysUntil(t.due_date) === 0)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const semana = active.filter((t: any) => { const d = daysUntil(t.due_date); return d > 0 && d <= 7 })
+
   const avgProgress = data.proyectos.length > 0
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ? Math.round(data.proyectos.reduce((acc: number, p: any) => acc + (p.progress ?? 0), 0) / data.proyectos.length)
     : 0
 
   const kpis = [
-    { label: 'Clientes activos',   value: data.totalClientes,          icon: Building2,     color: '#40b5fa', bg: 'rgba(64,181,250,0.10)' },
-    { label: 'Proyectos activos',  value: data.proyectos.length,       icon: FolderKanban,  color: '#40b5fa', bg: 'rgba(64,181,250,0.10)' },
-    { label: 'Avance promedio',    value: `${avgProgress}%`,           icon: TrendingUp,    color: '#4ade80', bg: 'rgba(74,222,128,0.10)' },
-    { label: 'Tareas atrasadas',   value: data.tareasAtrasadas.length, icon: AlertTriangle, color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)' },
-    { label: 'Vencen esta semana', value: data.tareasProximas.length,  icon: CalendarClock, color: '#ffd93d', bg: 'rgba(255,217,61,0.10)' },
+    { label: 'Clientes activos',   value: data.totalClientes,      icon: Building2,     color: '#40b5fa' },
+    { label: 'Proyectos activos',  value: data.proyectos.length,   icon: FolderKanban,  color: '#40b5fa' },
+    { label: 'Avance promedio',    value: `${avgProgress}%`,       icon: TrendingUp,    color: '#4ade80' },
+    { label: 'Por hacer',          value: active.length,           icon: CheckSquare,   color: '#a78bfa' },
+    { label: 'Atrasadas',          value: atrasadas.length,        icon: AlertTriangle, color: '#ff6b6b' },
+    { label: 'Vencen esta semana', value: hoy.length + semana.length, icon: CalendarClock, color: '#ffd93d' },
   ]
 
   return (
@@ -76,138 +92,159 @@ export default function DashboardPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        {kpis.map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="rounded-2xl p-5 relative overflow-hidden"
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-8">
+        {kpis.map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="rounded-2xl p-4 relative overflow-hidden"
             style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: bg }}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2" style={{ background: `${color}18` }}>
               <Icon className="w-4 h-4" style={{ color }} />
             </div>
-            <div className="text-3xl font-black mb-1" style={{ color, lineHeight: 1 }}>{value}</div>
+            <div className="text-2xl font-black mb-0.5" style={{ color, lineHeight: 1 }}>{value}</div>
             <div className="text-[10px] uppercase tracking-wider font-medium" style={{ color: '#6b8fa0' }}>{label}</div>
-            <div className="absolute bottom-0 left-0 right-0 h-0.5"
-              style={{ background: `linear-gradient(90deg, transparent, ${color}30, transparent)` }} />
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Tareas atrasadas */}
-        <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-          <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#1a2e3b' }}>
-            <AlertTriangle className="w-4 h-4" style={{ color: '#ff6b6b' }} />Tareas atrasadas
-          </h3>
-          {data.tareasAtrasadas.length > 0 ? (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Tareas por hacer — el corazón del dashboard */}
+        <div className="lg:col-span-2 rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm flex items-center gap-2" style={{ color: '#1a2e3b' }}>
+              <CheckSquare className="w-4 h-4" style={{ color: '#40b5fa' }} />
+              Tareas por hacer
+              {active.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                  style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }}>{active.length}</span>
+              )}
+            </h3>
+            <Link href="/tareas" className="text-xs font-semibold flex items-center gap-1" style={{ color: '#40b5fa' }}>
+              Ver todas <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          {active.length === 0 ? (
+            <div className="flex flex-col items-center py-12">
+              <CheckCircle2 className="w-10 h-10 mb-3" style={{ color: '#4ade80' }} />
+              <p className="text-sm font-semibold" style={{ color: '#1a2e3b' }}>Todo al día</p>
+              <p className="text-xs mt-0.5" style={{ color: '#6b8fa0' }}>No hay tareas pendientes.</p>
+            </div>
+          ) : (
             <div className="space-y-2">
-              {data.tareasAtrasadas.map((t: any) => {
-                const dias = Math.abs(daysUntil(t.due_date))
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {active.slice(0, 12).map((t: any) => {
+                const days = daysUntil(t.due_date)
+                const isVencida = days < 0
+                const isHoy = days === 0
+                const isUrgente = days > 0 && days <= 2
+                const pr = PRIORITY[t.priority as keyof typeof PRIORITY] ?? PRIORITY.media
                 return (
-                  <div key={t.id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
-                    style={{ background: 'rgba(255,107,107,0.05)', border: '1px solid rgba(255,107,107,0.12)' }}>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ background: PRIORITY_COLOR[t.priority] ?? '#ffd93d' }} />
-                      <span className="text-sm truncate" style={{ color: '#1a2e3b' }}>{t.title}</span>
+                  <div key={t.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all"
+                    style={{
+                      background: isVencida ? 'rgba(255,107,107,0.05)' : isHoy ? 'rgba(255,217,61,0.05)' : '#fafbfc',
+                      border: `1px solid ${isVencida ? 'rgba(255,107,107,0.18)' : isHoy ? 'rgba(255,217,61,0.25)' : 'rgba(0,40,80,0.06)'}`,
+                    }}>
+                    {/* Check rápido */}
+                    <button onClick={() => markComplete(t)} disabled={completing === t.id}
+                      title="Marcar completada" className="flex-shrink-0">
+                      {completing === t.id
+                        ? <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#40b5fa' }} />
+                        : <Circle className="w-5 h-5" style={{ color: '#86a2b2' }} />}
+                    </button>
+
+                    <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: pr.color }} />
+
+                    <Link href="/tareas" className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{t.title}</p>
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                        {t.task_type === 'recurrente' && t.recurrence && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"
+                            style={{ background: 'rgba(52,211,153,0.10)', color: '#059669' }}>
+                            <RefreshCw className="w-2.5 h-2.5" />{RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Rec'}
+                          </span>
+                        )}
+                        {t.companies?.name && <span className="text-[11px]" style={{ color: '#6b8fa0' }}>{t.companies.name}</span>}
+                        {t.profiles?.full_name && <span className="text-[11px]" style={{ color: '#86a2b2' }}>→ {t.profiles.full_name}</span>}
+                      </div>
+                    </Link>
+
+                    <div className="flex items-center gap-1 text-xs flex-shrink-0"
+                      style={{ color: isVencida ? '#ff6b6b' : isHoy ? '#b89c00' : isUrgente ? '#fb923c' : '#86a2b2' }}>
+                      {isVencida
+                        ? <><AlertTriangle className="w-3 h-3" />{Math.abs(days)}d</>
+                        : <><Clock className="w-3 h-3" />{isHoy ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>}
                     </div>
-                    <span className="text-xs flex-shrink-0 ml-2 px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(255,107,107,0.15)', color: '#ff6b6b' }}>
-                      {dias === 0 ? 'Hoy' : `${dias}d atrás`}
-                    </span>
                   </div>
                 )
               })}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center py-8">
-              <CheckCircle2 className="w-8 h-8 mb-2" style={{ color: '#4ade80' }} />
-              <p className="text-sm" style={{ color: '#6b8fa0' }}>Sin tareas atrasadas</p>
+              {active.length > 12 && (
+                <Link href="/tareas" className="block text-center text-xs font-semibold py-2 rounded-xl mt-1"
+                  style={{ background: '#f4f7fa', color: '#40b5fa' }}>
+                  +{active.length - 12} tareas más
+                </Link>
+              )}
             </div>
           )}
         </div>
 
-        {/* Próximas esta semana */}
+        {/* Equipo */}
         <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
           <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#1a2e3b' }}>
-            <CalendarClock className="w-4 h-4" style={{ color: '#ffd93d' }} />Vencen esta semana
+            <Users className="w-4 h-4" style={{ color: '#40b5fa' }} />Equipo
           </h3>
-          {data.tareasProximas.length > 0 ? (
-            <div className="space-y-2">
-              {data.tareasProximas.map((t: any) => {
-                const dias = daysUntil(t.due_date)
-                return (
-                  <div key={t.id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
-                    style={{ background: 'rgba(255,217,61,0.04)', border: '1px solid rgba(255,217,61,0.15)' }}>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ background: PRIORITY_COLOR[t.priority] ?? '#ffd93d' }} />
-                      <span className="text-sm truncate" style={{ color: '#1a2e3b' }}>{t.title}</span>
-                    </div>
-                    <span className="text-xs flex-shrink-0 ml-2 px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(255,217,61,0.15)', color: '#b89c00' }}>
-                      {dias === 0 ? 'Hoy' : dias === 1 ? 'Mañana' : `${dias}d`}
-                    </span>
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            {data.profiles.map((p: any) => {
+              const initials = p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+              const roleLabel = ROLE_LABELS[p.email] ?? (p.role === 'admin' ? 'Administrador' : 'Consultor')
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const asignadas = active.filter((t: any) => t.assigned_to === p.id).length
+              return (
+                <div key={p.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                  style={{ background: 'rgba(64,181,250,0.04)', border: '1px solid rgba(64,181,250,0.10)' }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>{initials}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{p.full_name}</p>
+                    <p className="text-[11px] truncate" style={{ color: '#6b8fa0' }}>{roleLabel}</p>
                   </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-center py-8" style={{ color: '#6b8fa0' }}>Sin tareas esta semana</p>
-          )}
+                  {asignadas > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0"
+                      style={{ background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }}>{asignadas}</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 
       {/* Progreso de proyectos */}
-      <div className="rounded-2xl p-6 mb-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
+      <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
         <h3 className="font-semibold text-sm flex items-center gap-2 mb-5" style={{ color: '#1a2e3b' }}>
           <FolderKanban className="w-4 h-4" style={{ color: '#40b5fa' }} />Estado de proyectos
         </h3>
         {data.proyectos.length > 0 ? (
           <div className="space-y-3">
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             {data.proyectos.slice(0, 12).map((p: any) => {
               const pct = p.progress ?? 0
               const barColor = pct < 30 ? '#ff6b6b' : pct < 70 ? '#ffd93d' : '#4ade80'
               return (
-                <div key={p.id} className="flex items-center gap-4">
-                  <span className="text-sm truncate flex-1" style={{ color: '#1a2e3b', minWidth: 0 }}>{p.name}</span>
+                <Link key={p.id} href={`/proyectos/${p.id}`} className="flex items-center gap-4 group">
+                  <span className="text-sm truncate flex-1 group-hover:underline" style={{ color: '#1a2e3b', minWidth: 0 }}>{p.name}</span>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="w-36 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.05)' }}>
                       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
                     </div>
                     <span className="text-xs font-semibold w-8 text-right tabular-nums" style={{ color: '#6b8fa0' }}>{pct}%</span>
                   </div>
-                </div>
+                </Link>
               )
             })}
           </div>
         ) : (
           <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Sin proyectos activos</p>
         )}
-      </div>
-
-      {/* Equipo */}
-      <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-        <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#1a2e3b' }}>
-          <Users className="w-4 h-4" style={{ color: '#40b5fa' }} />Equipo
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {data.profiles.map((p: any) => {
-            const initials = p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-            const roleLabel = ROLE_LABELS[p.email] ?? (p.role === 'admin' ? 'Administrador' : 'Consultor')
-            return (
-              <div key={p.id} className="flex items-center gap-3 rounded-xl px-3 py-3"
-                style={{ background: 'rgba(64,181,250,0.04)', border: '1px solid rgba(64,181,250,0.12)' }}>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                  style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>
-                  {initials}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: '#1a2e3b' }}>{p.full_name}</p>
-                  <p className="text-xs truncate" style={{ color: '#6b8fa0' }}>{roleLabel}</p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
       </div>
     </div>
   )
