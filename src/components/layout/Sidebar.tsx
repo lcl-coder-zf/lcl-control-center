@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Building2, FolderKanban, CheckSquare,
-  CalendarClock, LogOut, ChevronRight, X, ChevronLeft,
+  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
@@ -29,6 +29,11 @@ interface SidebarProps {
 export default function Sidebar({ profile, isOpen, onClose, onToggle }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+
+  // Vault solo para admins (Laura y Daniel).
+  const navItems = profile.role === 'admin'
+    ? [...NAV_ITEMS, { href: '/vault', icon: KeyRound, label: 'Vault' }]
+    : NAV_ITEMS
 
   async function handleLogout() {
     const supabase = createClient()
@@ -79,7 +84,7 @@ export default function Sidebar({ profile, isOpen, onClose, onToggle }: SidebarP
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+        {navItems.map(({ href, icon: Icon, label }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
           return (
             <Link key={href} href={href} onClick={onClose}

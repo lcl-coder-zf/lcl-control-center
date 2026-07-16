@@ -158,10 +158,7 @@ export default function ProyectoHub({
         </div>
         <input type="range" min={0} max={100} value={progress}
           onChange={e => setProgress(Number(e.target.value))}
-          className="w-full mb-2 accent-blue-400" />
-        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.04)' }}>
-          <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: '#40b5fa' }} />
-        </div>
+          className="w-full accent-blue-400" />
       </div>
 
       {/* Panel Tareas */}

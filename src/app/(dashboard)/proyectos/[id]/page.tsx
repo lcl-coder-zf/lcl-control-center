@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, CalendarClock, User } from 'lucide-react'
+import { ArrowLeft, MapPin, CalendarClock, User, LayoutDashboard } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { CompanyAvatar } from '@/components/ui/CompanyAvatar'
 import { ROLE_LABELS } from '@/types'
@@ -41,10 +41,16 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-start gap-4">
-          <Link href="/proyectos" className="p-2 rounded-xl mt-1"
-            style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
+          <div className="flex flex-col gap-2 mt-1">
+            <Link href="/proyectos" className="p-2 rounded-xl" title="Volver a proyectos"
+              style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+            <Link href="/dashboard" className="p-2 rounded-xl" title="Ir al Dashboard"
+              style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>
+              <LayoutDashboard className="w-4 h-4" />
+            </Link>
+          </div>
           <div className="flex items-start gap-4">
             <CompanyAvatar name={project.companies?.name ?? project.name} logoUrl={project.companies?.logo_url} size={52} />
             <div>

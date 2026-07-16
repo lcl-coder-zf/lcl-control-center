@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# secretos locales — NUNCA subir (repo público)
+*.local.sql
+vault_seed*.sql
+
 # debug
 npm-debug.log*
 yarn-debug.log*
