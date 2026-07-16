@@ -30,21 +30,24 @@ export default function TareasPage() {
     })
   }, [])
 
+  // Solo tareas principales cuentan en filtros y stats; las subtareas se anidan.
+  const mainTasks = useMemo(() => tasks.filter(t => !t.parent_id), [tasks])
+
   const filtered = useMemo(() => {
-    return tasks.filter(t => {
+    return mainTasks.filter(t => {
       const matchStatus = status === 'todas' || t.status === status
       const matchPrioridad = prioridad === 'todas' || t.priority === prioridad
       const matchAsignado = asignado === 'todas' || t.assigned_to === asignado
       const matchTipo = tipo === 'todas' || (tipo === 'recurrente' ? t.task_type === 'recurrente' : t.task_type !== 'recurrente')
       return matchStatus && matchPrioridad && matchAsignado && matchTipo
     })
-  }, [tasks, status, prioridad, asignado, tipo])
+  }, [mainTasks, status, prioridad, asignado, tipo])
 
   const counts = {
-    pendiente:   tasks.filter(t => t.status === 'pendiente').length,
-    en_progreso: tasks.filter(t => t.status === 'en_progreso').length,
-    vencida:     tasks.filter(t => t.status === 'vencida').length,
-    completada:  tasks.filter(t => t.status === 'completada').length,
+    pendiente:   mainTasks.filter(t => t.status === 'pendiente').length,
+    en_progreso: mainTasks.filter(t => t.status === 'en_progreso').length,
+    vencida:     mainTasks.filter(t => t.status === 'vencida').length,
+    completada:  mainTasks.filter(t => t.status === 'completada').length,
   }
 
   const pColors: Record<string, string> = { critica: '#ff6b6b', alta: '#fb923c', media: '#ffd93d', baja: '#4ade80' }
@@ -149,7 +152,8 @@ export default function TareasPage() {
         ))}
       </div>
 
-      <TareasList tasks={filtered} onRefresh={refreshTasks} />
+      {/* Principales filtradas + todas las subtareas (para anidarlas) */}
+      <TareasList tasks={[...filtered, ...tasks.filter(t => t.parent_id)]} onRefresh={refreshTasks} />
     </div>
   )
 }
