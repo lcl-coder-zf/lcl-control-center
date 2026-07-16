@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, Building2, FolderKanban, CheckSquare,
+  LayoutDashboard, Building2, CheckSquare,
   CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -14,7 +14,6 @@ import { ROLE_LABELS } from '@/types'
 const NAV_ITEMS = [
   { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/clientes',   icon: Building2,        label: 'Clientes' },
-  { href: '/proyectos',  icon: FolderKanban,     label: 'Proyectos' },
   { href: '/tareas',     icon: CheckSquare,      label: 'Tareas' },
   { href: '/agenda',     icon: CalendarClock,    label: 'Agenda' },
 ]

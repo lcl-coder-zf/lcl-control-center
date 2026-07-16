@@ -7,7 +7,7 @@ import { daysUntil, formatDate } from '@/lib/utils'
 import { ROLE_LABELS } from '@/types'
 import { RECURRENCE_CONFIG, regenerateIfRecurring, type Recurrence } from '@/lib/tasks'
 import {
-  Building2, FolderKanban, AlertTriangle, CalendarClock,
+  Building2, AlertTriangle, CalendarClock,
   TrendingUp, Users, CheckCircle2, CheckSquare, Circle,
   Clock, RefreshCw, Loader2, ArrowRight,
 } from 'lucide-react'
@@ -29,17 +29,15 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [clientes, proyectos, tareas, perfiles] = await Promise.all([
-      supabase.from('companies').select('id', { count: 'exact' }).eq('status', 'activo'),
-      supabase.from('projects').select('id, name, progress').eq('status', 'activo').order('progress', { ascending: true }),
-      // Tareas activas (pendientes/en progreso), solo principales, ordenadas por vencimiento.
-      supabase.from('tasks').select(TASK_SELECT).neq('status', 'completada').is('parent_id', null).order('due_date', { ascending: true }),
+    const [clientes, tareas, perfiles] = await Promise.all([
+      supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
+      // Todas las tareas principales (para lista activa + avance por cliente).
+      supabase.from('tasks').select(TASK_SELECT).is('parent_id', null).order('due_date', { ascending: true }),
       supabase.from('profiles').select('id, full_name, email, role').order('full_name'),
     ])
     setData({
-      totalClientes: clientes.count ?? 0,
-      proyectos: proyectos.data ?? [],
-      activeTasks: tareas.data ?? [],
+      clientes: clientes.data ?? [],
+      allTasks: tareas.data ?? [],
       profiles: perfiles.data ?? [],
     })
   }, [])
@@ -58,7 +56,8 @@ export default function DashboardPage() {
 
   if (!data) return <DashboardSkeleton />
 
-  const active = data.activeTasks
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const active = data.allTasks.filter((t: any) => t.status !== 'completada')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const atrasadas = active.filter((t: any) => daysUntil(t.due_date) < 0)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,14 +65,24 @@ export default function DashboardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const semana = active.filter((t: any) => { const d = daysUntil(t.due_date); return d > 0 && d <= 7 })
 
-  const avgProgress = data.proyectos.length > 0
+  // Avance por cliente = % de tareas principales completadas de ese cliente.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const clientesProgreso = data.clientes.map((c: any) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? Math.round(data.proyectos.reduce((acc: number, p: any) => acc + (p.progress ?? 0), 0) / data.proyectos.length)
+    const ts = data.allTasks.filter((t: any) => t.company_id === c.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const done = ts.filter((t: any) => t.status === 'completada').length
+    const progress = ts.length > 0 ? Math.round((done / ts.length) * 100) : 0
+    return { ...c, progress, total: ts.length }
+  }).sort((a: { progress: number }, b: { progress: number }) => a.progress - b.progress)
+
+  const conTareas = clientesProgreso.filter((c: { total: number }) => c.total > 0)
+  const avgProgress = conTareas.length > 0
+    ? Math.round(conTareas.reduce((acc: number, c: { progress: number }) => acc + c.progress, 0) / conTareas.length)
     : 0
 
   const kpis = [
-    { label: 'Clientes activos',   value: data.totalClientes,      icon: Building2,     color: '#40b5fa' },
-    { label: 'Proyectos activos',  value: data.proyectos.length,   icon: FolderKanban,  color: '#40b5fa' },
+    { label: 'Clientes activos',   value: data.clientes.length,    icon: Building2,     color: '#40b5fa' },
     { label: 'Avance promedio',    value: `${avgProgress}%`,       icon: TrendingUp,    color: '#4ade80' },
     { label: 'Por hacer',          value: active.length,           icon: CheckSquare,   color: '#a78bfa' },
     { label: 'Atrasadas',          value: atrasadas.length,        icon: AlertTriangle, color: '#ff6b6b' },
@@ -92,7 +101,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
         {kpis.map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="rounded-2xl p-4 relative overflow-hidden"
             style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
@@ -218,32 +227,30 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Progreso de proyectos */}
+      {/* Avance por cliente */}
       <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
         <h3 className="font-semibold text-sm flex items-center gap-2 mb-5" style={{ color: '#1a2e3b' }}>
-          <FolderKanban className="w-4 h-4" style={{ color: '#40b5fa' }} />Estado de proyectos
+          <Building2 className="w-4 h-4" style={{ color: '#40b5fa' }} />Avance por cliente
         </h3>
-        {data.proyectos.length > 0 ? (
+        {conTareas.length > 0 ? (
           <div className="space-y-3">
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {data.proyectos.slice(0, 12).map((p: any) => {
-              const pct = p.progress ?? 0
-              const barColor = pct < 30 ? '#ff6b6b' : pct < 70 ? '#ffd93d' : '#4ade80'
+            {conTareas.slice(0, 15).map((c: { id: string; name: string; progress: number; total: number }) => {
+              const barColor = c.progress < 30 ? '#ff6b6b' : c.progress < 70 ? '#ffd93d' : '#4ade80'
               return (
-                <Link key={p.id} href={`/proyectos/${p.id}`} className="flex items-center gap-4 group">
-                  <span className="text-sm truncate flex-1 group-hover:underline" style={{ color: '#1a2e3b', minWidth: 0 }}>{p.name}</span>
+                <Link key={c.id} href={`/clientes/${c.id}`} className="flex items-center gap-4 group">
+                  <span className="text-sm truncate flex-1 group-hover:underline" style={{ color: '#1a2e3b', minWidth: 0 }}>{c.name}</span>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="w-36 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.05)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
+                      <div className="h-full rounded-full transition-all" style={{ width: `${c.progress}%`, background: barColor }} />
                     </div>
-                    <span className="text-xs font-semibold w-8 text-right tabular-nums" style={{ color: '#6b8fa0' }}>{pct}%</span>
+                    <span className="text-xs font-semibold w-8 text-right tabular-nums" style={{ color: '#6b8fa0' }}>{c.progress}%</span>
                   </div>
                 </Link>
               )
             })}
           </div>
         ) : (
-          <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Sin proyectos activos</p>
+          <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Aún no hay tareas por cliente</p>
         )}
       </div>
     </div>
