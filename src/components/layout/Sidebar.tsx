@@ -16,7 +16,7 @@ const NAV_ITEMS = [
   { href: '/clientes',   icon: Building2,        label: 'Clientes' },
   { href: '/proyectos',  icon: FolderKanban,     label: 'Proyectos' },
   { href: '/tareas',     icon: CheckSquare,      label: 'Tareas' },
-  { href: '/calendario', icon: CalendarClock,    label: 'Vencimientos' },
+  { href: '/agenda',     icon: CalendarClock,    label: 'Agenda' },
 ]
 
 interface SidebarProps {

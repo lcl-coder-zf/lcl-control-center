@@ -34,7 +34,7 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/clientes') ||
     request.nextUrl.pathname.startsWith('/proyectos') ||
     request.nextUrl.pathname.startsWith('/tareas') ||
-    request.nextUrl.pathname.startsWith('/calendario') ||
+    request.nextUrl.pathname.startsWith('/agenda') ||
     request.nextUrl.pathname.startsWith('/vault')
 
   if (!user && isDashboard) {
