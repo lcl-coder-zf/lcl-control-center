@@ -12,6 +12,7 @@ import {
   Clock, RefreshCw, Loader2, ArrowRight,
 } from 'lucide-react'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
+import EmployeePanel from '@/components/equipo/EmployeePanel'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)', label: 'Baja' },
@@ -26,19 +27,23 @@ export default function DashboardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any>(null)
   const [completing, setCompleting] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [clientes, tareas, perfiles] = await Promise.all([
+    const { data: { user } } = await supabase.auth.getUser()
+    const [clientes, tareas, perfiles, myProfile] = await Promise.all([
       supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
-      // Todas las tareas principales (para lista activa + avance por cliente).
       supabase.from('tasks').select(TASK_SELECT).is('parent_id', null).order('due_date', { ascending: true }),
-      supabase.from('profiles').select('id, full_name, email, role').order('full_name'),
+      supabase.from('profiles').select('id, full_name, email, role, bio, start_date, phone').order('full_name'),
+      user ? supabase.from('profiles').select('role').eq('id', user.id).single() : Promise.resolve({ data: null }),
     ])
     setData({
       clientes: clientes.data ?? [],
       allTasks: tareas.data ?? [],
       profiles: perfiles.data ?? [],
+      currentUserRole: myProfile.data?.role ?? 'consultant',
     })
   }, [])
 
@@ -92,6 +97,7 @@ export default function DashboardPage() {
   ]
 
   return (
+    <>
     <div className="p-4 lg:p-8">
       {/* Header */}
       <div className="mb-8">
@@ -210,8 +216,11 @@ export default function DashboardPage() {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const asignadas = active.filter((t: any) => t.assigned_to === p.id).length
               return (
-                <div key={p.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                  style={{ background: 'rgba(64,181,250,0.04)', border: '1px solid rgba(64,181,250,0.10)' }}>
+                <button key={p.id} onClick={() => setSelectedEmployee(p)}
+                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all text-left"
+                  style={{ background: 'rgba(64,181,250,0.04)', border: '1px solid rgba(64,181,250,0.10)' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(64,181,250,0.09)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(64,181,250,0.04)' }}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                     style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>{initials}</div>
                   <div className="min-w-0 flex-1">
@@ -222,7 +231,7 @@ export default function DashboardPage() {
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0"
                       style={{ background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }}>{asignadas}</span>
                   )}
-                </div>
+                </button>
               )
             })}
           </div>
@@ -256,5 +265,14 @@ export default function DashboardPage() {
         )}
       </div>
     </div>
+
+      {selectedEmployee && (
+        <EmployeePanel
+          profile={selectedEmployee}
+          currentUserRole={data?.currentUserRole ?? 'consultant'}
+          onClose={() => setSelectedEmployee(null)}
+        />
+      )}
+    </>
   )
 }

@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Building2, CheckSquare,
-  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings,
+  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings, Users,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: '/clientes',   icon: Building2,        label: 'Clientes' },
   { href: '/tareas',     icon: CheckSquare,      label: 'Tareas' },
   { href: '/agenda',     icon: CalendarClock,    label: 'Agenda' },
+  { href: '/equipo',     icon: Users,            label: 'Equipo' },
 ]
 
 interface SidebarProps {
