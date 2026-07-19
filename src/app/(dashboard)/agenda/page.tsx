@@ -93,6 +93,9 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
   const [selected, setSelected] = useState<string>(dateKey(today.getFullYear(), today.getMonth(), today.getDate()))
   const [showNew, setShowNew] = useState(false)
   const [detail, setDetail] = useState<Row | null>(null)
+  const [hoveredDay, setHoveredDay] = useState<string | null>(null)
+  const [dragOver, setDragOver]     = useState<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
 
   // Grid del mes (semana inicia lunes).
   const first = new Date(cursor.y, cursor.m, 1)
@@ -113,6 +116,11 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
   async function del(id: string) {
     const supabase = createClient()
     await supabase.from('events').delete().eq('id', id)
+    reload()
+  }
+  async function moveEvent(eventId: string, newDate: string) {
+    const supabase = createClient()
+    await supabase.from('events').update({ event_date: newDate }).eq('id', eventId)
     reload()
   }
   async function toggle(ev: Row) {
@@ -146,25 +154,49 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
             const dayEvents = eventsOn(key)
             const isToday = key === dateKey(today.getFullYear(), today.getMonth(), today.getDate())
             const isSel = key === selected
+            const isHov = hoveredDay === key
+            const isDragOver = dragOver === key
             return (
-              <button key={idx} onClick={() => setSelected(key)}
-                className="min-h-[64px] rounded-xl p-1.5 text-left transition-all flex flex-col gap-0.5"
+              <div key={idx}
+                onClick={() => setSelected(key)}
+                onMouseEnter={() => setHoveredDay(key)}
+                onMouseLeave={() => setHoveredDay(null)}
+                onDragOver={e => { e.preventDefault(); setDragOver(key) }}
+                onDragLeave={() => setDragOver(null)}
+                onDrop={e => { e.preventDefault(); setDragOver(null); if (draggingId) { moveEvent(draggingId, key); setDraggingId(null) } }}
+                className="min-h-[64px] rounded-xl p-1.5 text-left flex flex-col gap-0.5 relative cursor-pointer select-none"
                 style={{
-                  background: isSel ? 'rgba(64,181,250,0.10)' : '#fafbfc',
-                  border: `1px solid ${isSel ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.05)'}`,
+                  background: isDragOver ? 'rgba(64,181,250,0.15)' : isSel ? 'rgba(64,181,250,0.10)' : '#fafbfc',
+                  border: `1px solid ${isDragOver ? 'rgba(64,181,250,0.55)' : isSel ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.05)'}`,
+                  transition: 'background 120ms, border-color 120ms',
                 }}>
                 <span className="text-xs font-semibold w-5 h-5 flex items-center justify-center rounded-full"
                   style={{ background: isToday ? '#40b5fa' : 'transparent', color: isToday ? '#fff' : '#1a2e3b' }}>{day}</span>
+
+                {isHov && !draggingId && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setSelected(key); setShowNew(true) }}
+                    className="absolute top-1 right-1 w-4 h-4 rounded flex items-center justify-center"
+                    style={{ background: 'rgba(64,181,250,0.18)', color: '#40b5fa' }}
+                  >
+                    <Plus className="w-2.5 h-2.5" />
+                  </button>
+                )}
+
                 {dayEvents.slice(0, 2).map(e => {
                   const ts = typeStyle(e.event_type)
                   return (
-                    <span key={e.id} onClick={(ev) => { ev.stopPropagation(); setDetail(e) }}
-                      className="text-[9px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80"
-                      style={{ background: ts.bg, color: ts.color }}>{e.title}</span>
+                    <span key={e.id}
+                      draggable
+                      onDragStart={ev => { ev.stopPropagation(); setDraggingId(e.id) }}
+                      onDragEnd={() => setDraggingId(null)}
+                      onClick={ev => { ev.stopPropagation(); setDetail(e) }}
+                      className="text-[9px] px-1 py-0.5 rounded truncate hover:opacity-80"
+                      style={{ background: ts.bg, color: ts.color, cursor: 'grab' }}>{e.title}</span>
                   )
                 })}
                 {dayEvents.length > 2 && <span className="text-[9px]" style={{ color: '#86a2b2' }}>+{dayEvents.length - 2}</span>}
-              </button>
+              </div>
             )
           })}
         </div>
