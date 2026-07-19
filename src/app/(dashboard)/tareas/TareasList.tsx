@@ -9,6 +9,27 @@ import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { regenerateIfRecurring, RECURRENCE_CONFIG, type Recurrence } from '@/lib/tasks'
 
+function ProgressRing({ done, total }: { done: number; total: number }) {
+  const pct    = total === 0 ? 0 : Math.round((done / total) * 100)
+  const r      = 13
+  const circ   = 2 * Math.PI * r
+  const offset = circ * (1 - pct / 100)
+  const color  = pct === 100 ? '#4ade80' : pct === 0 ? 'rgba(0,40,80,0.12)' : '#40b5fa'
+  return (
+    <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 34, height: 34 }}>
+      <svg width="34" height="34" viewBox="0 0 34 34" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="17" cy="17" r={r} fill="none" stroke="rgba(0,40,80,0.07)" strokeWidth="3" />
+        <circle cx="17" cy="17" r={r} fill="none" stroke={color} strokeWidth="3"
+          strokeDasharray={circ} strokeDashoffset={offset}
+          strokeLinecap="round" style={{ transition: 'stroke-dashoffset 400ms ease, stroke 300ms ease' }} />
+      </svg>
+      <span className="absolute text-[9px] font-bold" style={{ color: pct === 100 ? '#4ade80' : pct === 0 ? '#b0bcc7' : '#40b5fa' }}>
+        {pct}%
+      </span>
+    </div>
+  )
+}
+
 const PRIORITY_STYLES: Record<string, { color: string; bg: string; label: string }> = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',  label: 'Baja' },
   media:   { color: '#ffd93d', bg: 'rgba(255,217,61,0.10)',  label: 'Media' },
@@ -153,9 +174,11 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
                     : null}
               </button>
 
-              {/* Indicador prioridad */}
-              <div className="w-1 h-10 rounded-full flex-shrink-0"
-                style={{ background: pr.color, opacity: isCompleta ? 0.4 : 1 }} />
+              {/* Progreso subtareas (anillo) o barra de prioridad */}
+              {subtasks.length > 0
+                ? <ProgressRing done={doneSubs} total={subtasks.length} />
+                : <div className="w-1 h-10 rounded-full flex-shrink-0" style={{ background: pr.color, opacity: isCompleta ? 0.4 : 1 }} />
+              }
 
               {/* Contenido clickeable → expande detalle */}
               <button onClick={() => toggleExpand(t.id)} className="flex-1 min-w-0 text-left">
@@ -228,7 +251,7 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
                 <div className="ml-11">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: '#86a2b2' }}>
-                      Subtareas {subtasks.length > 0 && `(${doneSubs}/${subtasks.length})`}
+                      Subtareas {subtasks.length > 0 && `· ${doneSubs}/${subtasks.length}`}
                     </p>
                     <button onClick={() => { setAddingSubFor(addingSubFor === t.id ? null : t.id); setSubTitle('') }}
                       className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg"
@@ -236,6 +259,15 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
                       <Plus className="w-3 h-3" />Subtarea
                     </button>
                   </div>
+                  {subtasks.length > 0 && (
+                    <div className="mb-3 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,40,80,0.07)' }}>
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.round((doneSubs / subtasks.length) * 100)}%`,
+                          background: doneSubs === subtasks.length ? '#4ade80' : '#40b5fa',
+                        }} />
+                    </div>
+                  )}
 
                   {subtasks.length > 0 && (
                     <div className="space-y-1 mb-2">
