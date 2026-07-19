@@ -174,10 +174,10 @@ export default function TareasList({ tasks, onRefresh }: { tasks: any[]; onRefre
                     : null}
               </button>
 
-              {/* Progreso subtareas (anillo) o barra de prioridad */}
+              {/* Anillo de progreso — subtareas si las tiene, estado propio si no */}
               {subtasks.length > 0
                 ? <ProgressRing done={doneSubs} total={subtasks.length} />
-                : <div className="w-1 h-10 rounded-full flex-shrink-0" style={{ background: pr.color, opacity: isCompleta ? 0.4 : 1 }} />
+                : <ProgressRing done={isCompleta ? 1 : 0} total={1} />
               }
 
               {/* Contenido clickeable → expande detalle */}
