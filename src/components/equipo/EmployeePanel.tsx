@@ -6,7 +6,7 @@ import { ROLE_LABELS } from '@/types'
 import { formatDate, daysUntil } from '@/lib/utils'
 import {
   X, Clock, CheckCircle2, AlertTriangle, CalendarDays,
-  Gauge, Star, AlertCircle, Plus, Loader2, Phone, FileText,
+  Gauge, Star, AlertCircle, Plus, Loader2, Phone, Pencil, Check, CreditCard,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,6 +53,21 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
   const [evals,      setEvals]      = useState<Row[]>([])
   const [llamados,   setLlamados]   = useState<Row[]>([])
   const [loading,    setLoading]    = useState(true)
+
+  // Edit profile
+  const [editMode,   setEditMode]   = useState(false)
+  const [editForm,   setEditForm]   = useState({ document_id: profile.document_id ?? '', bio: profile.bio ?? '', start_date: profile.start_date ?? '', phone: profile.phone ?? '' })
+  const [editSaving, setEditSaving] = useState(false)
+  const [localProfile, setLocalProfile] = useState(profile)
+
+  async function saveProfile() {
+    setEditSaving(true)
+    const sb = createClient()
+    await sb.from('profiles').update(editForm).eq('id', profile.id)
+    setLocalProfile((p: Row) => ({ ...p, ...editForm }))
+    setEditMode(false)
+    setEditSaving(false)
+  }
 
   // Forms
   const [addingEval,    setAddingEval]    = useState(false)
@@ -135,30 +150,85 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-base font-black flex-shrink-0"
                 style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>{initials}</div>
               <div>
-                <h2 className="text-base font-black" style={{ color: '#1a2e3b' }}>{profile.full_name}</h2>
+                <h2 className="text-base font-black" style={{ color: '#1a2e3b' }}>{localProfile.full_name}</h2>
                 <p className="text-xs" style={{ color: '#6b8fa0' }}>{title}</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-[#f4f7fa]" style={{ color: '#6b8fa0' }}>
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-1">
+              {isAdmin && (
+                <button onClick={() => setEditMode(v => !v)}
+                  className="p-2 rounded-xl hover:bg-[#f4f7fa] transition-colors"
+                  style={{ color: editMode ? '#40b5fa' : '#b0bcc7' }} title="Editar perfil">
+                  <Pencil size={14} />
+                </button>
+              )}
+              <button onClick={onClose} className="p-2 rounded-xl hover:bg-[#f4f7fa]" style={{ color: '#6b8fa0' }}>
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
-          {profile.bio && (
-            <p className="text-sm mb-2" style={{ color: '#4a5a6b' }}>{profile.bio}</p>
+          {/* Edit form */}
+          {editMode && isAdmin && (
+            <div className="mb-3 rounded-xl p-3 space-y-2" style={{ background: '#f4f7fa', border: '1px solid rgba(64,181,250,0.2)' }}>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Cédula</label>
+                  <input value={editForm.document_id} onChange={e => setEditForm(p => ({ ...p, document_id: e.target.value }))}
+                    placeholder="Ej: 1234567890" className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none"
+                    style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Teléfono</label>
+                  <input value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))}
+                    placeholder="Ej: 3001234567" className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none"
+                    style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Fecha de ingreso</label>
+                <input type="date" value={editForm.start_date} onChange={e => setEditForm(p => ({ ...p, start_date: e.target.value }))}
+                  className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none"
+                  style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Descripción breve</label>
+                <textarea value={editForm.bio} onChange={e => setEditForm(p => ({ ...p, bio: e.target.value }))}
+                  placeholder="Ej: Experta en auditorías ISO y BASC, lleva 3 años en el equipo." rows={2}
+                  className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none resize-none"
+                  style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveProfile} disabled={editSaving}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
+                  style={{ background: '#40b5fa', color: '#fff' }}>
+                  {editSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Check className="w-3 h-3" />Guardar</>}
+                </button>
+                <button onClick={() => setEditMode(false)} className="px-3 py-1.5 rounded-lg text-xs" style={{ background: '#e2e8f0', color: '#6b8fa0' }}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {localProfile.bio && !editMode && (
+            <p className="text-sm mb-2" style={{ color: '#4a5a6b' }}>{localProfile.bio}</p>
           )}
 
           <div className="flex flex-wrap gap-3">
-            {profile.start_date && (
+            {localProfile.document_id && (
               <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}>
-                <CalendarDays className="w-3 h-3" />
-                Desde {new Date(profile.start_date + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}
-                {' '}· {monthsSince(profile.start_date)}
+                <CreditCard className="w-3 h-3" />{localProfile.document_id}
               </span>
             )}
-            {profile.phone && (
+            {localProfile.start_date && (
               <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}>
-                <Phone className="w-3 h-3" />{profile.phone}
+                <CalendarDays className="w-3 h-3" />
+                Desde {new Date(localProfile.start_date + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}
+                {' '}· {monthsSince(localProfile.start_date)}
+              </span>
+            )}
+            {localProfile.phone && (
+              <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}>
+                <Phone className="w-3 h-3" />{localProfile.phone}
               </span>
             )}
           </div>
@@ -336,13 +406,6 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
                 </Section>
               )}
 
-              {/* Notas de perfil (editable por admin) */}
-              {profile.bio || profile.start_date || profile.phone ? null : isAdmin && (
-                <div className="rounded-xl px-4 py-3 text-xs text-center" style={{ background: '#f4f7fa', color: '#86a2b2' }}>
-                  <FileText className="w-4 h-4 mx-auto mb-1" />
-                  Edita el perfil desde Configuración para agregar bio, fecha de ingreso y teléfono.
-                </div>
-              )}
             </>
           )}
         </div>

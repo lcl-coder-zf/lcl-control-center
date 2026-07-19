@@ -12,30 +12,32 @@ import type { Profile } from '@/types'
 import { ROLE_LABELS } from '@/types'
 
 const NAV_ITEMS = [
-  { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/clientes',   icon: Building2,        label: 'Clientes' },
-  { href: '/tareas',     icon: CheckSquare,      label: 'Tareas' },
-  { href: '/agenda',     icon: CalendarClock,    label: 'Agenda' },
-  { href: '/equipo',     icon: Users,            label: 'Equipo' },
+  { href: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',     module: null },
+  { href: '/clientes',      icon: Building2,       label: 'Clientes',      module: 'clientes' },
+  { href: '/tareas',        icon: CheckSquare,     label: 'Tareas',        module: 'tareas' },
+  { href: '/agenda',        icon: CalendarClock,   label: 'Agenda',        module: 'agenda' },
+  { href: '/equipo',        icon: Users,           label: 'Equipo',        module: 'equipo' },
+  { href: '/vault',         icon: KeyRound,        label: 'Vault',         module: 'vault' },
+  { href: '/configuracion', icon: Settings,        label: 'Configuración', module: 'configuracion' },
 ]
 
 interface SidebarProps {
   profile: Profile
+  moduleSettings: Record<string, string>
   isOpen: boolean
   onClose: () => void
-  onToggle?: () => void  // desktop collapse button
+  onToggle?: () => void
 }
 
-export default function Sidebar({ profile, isOpen, onClose, onToggle }: SidebarProps) {
+export default function Sidebar({ profile, moduleSettings, isOpen, onClose, onToggle }: SidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
+  const router   = useRouter()
 
-  // Vault y Configuración solo para admins (Laura y Daniel).
-  const navItems = profile.role === 'admin'
-    ? [...NAV_ITEMS,
-       { href: '/vault', icon: KeyRound, label: 'Vault' },
-       { href: '/configuracion', icon: Settings, label: 'Configuración' }]
-    : NAV_ITEMS
+  function isVisible(module: string | null) {
+    if (!module) return true
+    const setting = moduleSettings[`module_${module}`] ?? 'all'
+    return setting === 'all' || (setting === 'admin' && profile.role === 'admin')
+  }
 
   async function handleLogout() {
     const supabase = createClient()
@@ -68,7 +70,6 @@ export default function Sidebar({ profile, isOpen, onClose, onToggle }: SidebarP
           <p style={{ fontSize: 14, fontWeight: 700, color: '#1a2e3b', margin: 0, letterSpacing: '0.02em' }}>LCL Control</p>
           <p style={{ fontSize: 10, color: '#6b8fa0', margin: 0, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Center</p>
         </div>
-        {/* Desktop: collapse button */}
         {onToggle && (
           <button onClick={onToggle}
             style={{ padding: 6, borderRadius: 8, background: '#f4f7fa', color: '#6b8fa0', border: 'none', cursor: 'pointer', display: 'none' }}
@@ -76,7 +77,6 @@ export default function Sidebar({ profile, isOpen, onClose, onToggle }: SidebarP
             <ChevronLeft size={16} />
           </button>
         )}
-        {/* Mobile: close button */}
         <button onClick={onClose}
           style={{ padding: 6, borderRadius: 8, background: '#f4f7fa', color: '#6b8fa0', border: 'none', cursor: 'pointer' }}
           className="mobile-close-btn">
@@ -86,7 +86,7 @@ export default function Sidebar({ profile, isOpen, onClose, onToggle }: SidebarP
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-        {navItems.map(({ href, icon: Icon, label }) => {
+        {NAV_ITEMS.filter(item => isVisible(item.module)).map(({ href, icon: Icon, label }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
           return (
             <Link key={href} href={href} onClick={onClose}

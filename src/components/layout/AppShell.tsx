@@ -7,7 +7,7 @@ import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
 import type { Profile } from '@/types'
 
-export default function AppShell({ profile, children }: { profile: Profile; children: React.ReactNode }) {
+export default function AppShell({ profile, moduleSettings, children }: { profile: Profile; moduleSettings: Record<string, string>; children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
 
@@ -36,6 +36,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
 
       <Sidebar
         profile={profile}
+        moduleSettings={moduleSettings}
         isOpen={open}
         onClose={() => setOpen(false)}
         onToggle={() => setOpen(o => !o)}
