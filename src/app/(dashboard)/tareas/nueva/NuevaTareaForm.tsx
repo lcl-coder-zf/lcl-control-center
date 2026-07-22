@@ -82,13 +82,19 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
 
     const cliente = companies.find(c => c.id === form.company_id)?.name
     const admins = await adminIds(supabase)
+    const msg = `Nueva tarea: "${form.title}"${cliente ? ' · ' + cliente : ''}`
     await notify(supabase, {
       recipientIds: [...assignedArr, ...admins],
       type: 'tarea_asignada',
-      message: `Nueva tarea: "${form.title}"${cliente ? ' · ' + cliente : ''}`,
+      message: msg,
       link: '/tareas',
       actorId: user?.id,
     })
+    fetch('/api/push/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '📋 Nueva tarea asignada', body: msg, url: '/tareas', topic: 'general' }),
+    }).catch(() => {})
 
     router.push('/tareas')
     router.refresh()

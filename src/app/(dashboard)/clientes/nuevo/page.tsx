@@ -83,6 +83,11 @@ export default function NuevoClientePage() {
       link: nuevo ? `/clientes/${nuevo.id}` : '/clientes',
       actorId: user?.id,
     })
+    fetch('/api/push/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '🏢 Nuevo cliente', body: `Se agregó ${form.name}`, url: '/clientes', topic: 'admin' }),
+    }).catch(() => {})
 
     router.push('/clientes')
     router.refresh()

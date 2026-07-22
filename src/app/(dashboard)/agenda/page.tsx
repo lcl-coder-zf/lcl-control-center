@@ -552,13 +552,19 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
     }
     const admins = await adminIds(supabase)
     const fechaLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
+    const eventoMsg = `Evento "${title}" el ${fechaLabel}${!allDay && time ? ' ' + time : ''}`
     await notify(supabase, {
       recipientIds: [...invitees, ...admins],
       type: 'evento_invitado',
-      message: `Evento "${title}" el ${fechaLabel}${!allDay && time ? ' ' + time : ''}`,
+      message: eventoMsg,
       link: '/agenda',
       actorId: user?.id,
     })
+    fetch('/api/push/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '📅 Nuevo evento', body: eventoMsg, url: '/agenda', topic: 'general' }),
+    }).catch(() => {})
     setSaving(false)
     onSaved()
   }

@@ -77,13 +77,19 @@ export default function ClienteTareas({ companyId, companyName, initialTasks, pr
       setTasks(prev => [...prev, data])
       // Notificar al responsable + admins (Laura y Daniel reciben todo).
       const admins = await adminIds(supabase)
+      const tareaMsg = `Nueva tarea: "${data.title}" · ${companyName}`
       await notify(supabase, {
         recipientIds: [data.assigned_to, ...admins],
         type: 'tarea_asignada',
-        message: `Nueva tarea: "${data.title}" · ${companyName}`,
+        message: tareaMsg,
         link: `/clientes/${companyId}`,
         actorId: userId,
       })
+      fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: '📋 Nueva tarea', body: tareaMsg, url: `/clientes/${companyId}`, topic: 'general' }),
+      }).catch(() => {})
       setNewTask({ title: '', due_date: '', priority: 'media', assigned_to: '', task_type: 'esporadica', recurrence: 'mensual' })
       setShowNewTask(false)
     }
