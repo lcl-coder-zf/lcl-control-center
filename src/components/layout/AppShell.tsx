@@ -42,8 +42,8 @@ export default function AppShell({ profile, moduleSettings, children }: { profil
         onToggle={() => setOpen(o => !o)}
       />
 
-      {/* Campana de notificaciones (fija arriba a la derecha) */}
-      <NotificationBell />
+      {/* Bell fija solo en desktop */}
+      {isDesktop && <NotificationBell />}
 
       {/* Main content */}
       <div style={{
@@ -55,12 +55,12 @@ export default function AppShell({ profile, moduleSettings, children }: { profil
         marginLeft: sidebarPushesContent ? 240 : 0,
         transition: 'margin-left 0.3s ease',
       }}>
-        {/* Mobile top bar */}
+        {/* Mobile top bar — bell integrada */}
         {!isDesktop && (
           <header style={{
             position: 'sticky', top: 0, zIndex: 30,
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '0 16px', height: 56, flexShrink: 0,
+            display: 'flex', alignItems: 'center',
+            padding: '0 12px', height: 56, flexShrink: 0,
             background: '#ffffff', borderBottom: '1px solid rgba(0,40,80,0.08)',
           }}>
             <button
@@ -68,10 +68,12 @@ export default function AppShell({ profile, moduleSettings, children }: { profil
               style={{ padding: 8, borderRadius: 10, background: '#f4f7fa', color: '#1a2e3b', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
               <Menu size={20} />
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Image src="/icon.png" alt="LCL" width={22} height={22} style={{ borderRadius: 4, objectFit: 'contain' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 10, flex: 1 }}>
+              <Image src="/icon-192.png" alt="LCL" width={22} height={22} style={{ borderRadius: 4, objectFit: 'contain' }} />
               <span style={{ fontWeight: 700, fontSize: 14, color: '#1a2e3b' }}>LCL Control</span>
             </div>
+            {/* Bell inline en header mobile */}
+            <NotificationBell inline />
           </header>
         )}
 

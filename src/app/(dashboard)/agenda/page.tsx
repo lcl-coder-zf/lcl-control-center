@@ -8,7 +8,7 @@ import { notify, adminIds } from '@/lib/notify'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   CalendarDays, Gauge, Plus, X, Loader2, Circle, Trash2, RefreshCw,
-  Clock, CheckCircle2, ChevronLeft, ChevronRight, Users, Building2,
+  Clock, CheckCircle2, ChevronLeft, ChevronRight, Users, Building2, Pencil,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,7 +20,6 @@ const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 
 const pad = (n: number) => String(n).padStart(2, '0')
 const dateKey = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`
 
-// Color por tipo de evento.
 function typeStyle(type: string) {
   if (type === 'auditoria') return { color: '#fb923c', bg: 'rgba(251,146,60,0.12)', label: 'Auditoría' }
   if (type === 'reunion')   return { color: '#40b5fa', bg: 'rgba(64,181,250,0.12)', label: 'Reunión' }
@@ -86,24 +85,29 @@ export default function AgendaPage() {
   )
 }
 
-// ── EVENTOS (calendario + invitados) ──────────────────────────────────────────
+// ── EVENTOS ────────────────────────────────────────────────────────────────────
 function Eventos({ events, profiles, companies, reload }: { events: Row[]; profiles: Row[]; companies: Row[]; reload: () => void }) {
   const today = new Date()
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() })
   const [selected, setSelected] = useState<string>(dateKey(today.getFullYear(), today.getMonth(), today.getDate()))
   const [showNew, setShowNew] = useState(false)
   const [detail, setDetail] = useState<Row | null>(null)
+  const [editingEvent, setEditingEvent] = useState<Row | null>(null)
   const [hoveredDay, setHoveredDay] = useState<string | null>(null)
   const [dragOver, setDragOver]     = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
-  // Grid del mes (semana inicia lunes).
   const first = new Date(cursor.y, cursor.m, 1)
   const lead = (first.getDay() + 6) % 7
   const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate()
   const cells: (number | null)[] = [...Array(lead).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
 
-  const eventsOn = (key: string) => events.filter(e => e.event_date === key)
+  // Eventos que caen en un día (incluye multi-día)
+  const eventsOn = (key: string) => events.filter(e => {
+    if (!e.end_date || e.end_date === e.event_date) return e.event_date === key
+    return e.event_date <= key && key <= e.end_date
+  })
+
   const selectedEvents = eventsOn(selected)
 
   function move(delta: number) {
@@ -185,14 +189,24 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
 
                 {dayEvents.slice(0, 2).map(e => {
                   const ts = typeStyle(e.event_type)
+                  const isFirst = e.event_date === key
+                  const isLast = !e.end_date || e.end_date === key || e.end_date === e.event_date
                   return (
                     <span key={e.id}
                       draggable
                       onDragStart={ev => { ev.stopPropagation(); setDraggingId(e.id) }}
                       onDragEnd={() => setDraggingId(null)}
                       onClick={ev => { ev.stopPropagation(); setDetail(e) }}
-                      className="text-[9px] px-1 py-0.5 rounded truncate hover:opacity-80"
-                      style={{ background: ts.bg, color: ts.color, cursor: 'grab' }}>{e.title}</span>
+                      className="text-[9px] px-1 py-0.5 truncate hover:opacity-80"
+                      style={{
+                        background: ts.bg,
+                        color: ts.color,
+                        cursor: 'grab',
+                        borderRadius: `${isFirst ? 4 : 0}px ${isLast ? 4 : 0}px ${isLast ? 4 : 0}px ${isFirst ? 4 : 0}px`,
+                        paddingLeft: isFirst ? undefined : 2,
+                      }}>
+                      {isFirst ? e.title : `↳ ${e.title}`}
+                    </span>
                   )
                 })}
                 {dayEvents.length > 2 && <span className="text-[9px]" style={{ color: '#86a2b2' }}>+{dayEvents.length - 2}</span>}
@@ -228,7 +242,15 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium hover:underline" style={{ color: '#1a2e3b', textDecoration: done ? 'line-through' : 'none' }}>{ev.title}</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: ts.bg, color: ts.color }}>{ts.label}</span>
-                      {ev.event_time && <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}><Clock className="w-3 h-3" />{ev.event_time.slice(0, 5)}</span>}
+                      {ev.all_day
+                        ? <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}><Clock className="w-3 h-3" />Todo el día</span>
+                        : ev.event_time && <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}><Clock className="w-3 h-3" />{ev.event_time.slice(0, 5)}</span>
+                      }
+                      {ev.end_date && ev.end_date !== ev.event_date && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }}>
+                          hasta {new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(new Date(ev.end_date + 'T12:00:00'))}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 flex-wrap mt-1">
                       {ev.companies?.name && <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}><Building2 className="w-3 h-3" />{ev.companies.name}</span>}
@@ -240,9 +262,15 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
                     </div>
                     {ev.notas && <p className="text-[11px] mt-1" style={{ color: '#86a2b2' }}>{ev.notas}</p>}
                   </div>
-                  <button onClick={() => del(ev.id)} className="p-1 rounded-lg opacity-30 hover:opacity-100 transition-opacity flex-shrink-0" style={{ color: '#ff6b6b' }}>
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => { setEditingEvent(ev); setDetail(null) }} title="Editar"
+                      className="p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity" style={{ color: '#40b5fa' }}>
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => del(ev.id)} className="p-1 rounded-lg opacity-30 hover:opacity-100 transition-opacity flex-shrink-0" style={{ color: '#ff6b6b' }}>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )
             })}
@@ -252,6 +280,7 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
 
       {detail && (
         <EventoDetalle ev={detail} onClose={() => setDetail(null)}
+          onEdit={() => { setEditingEvent(detail); setDetail(null) }}
           onToggle={async () => { await toggle(detail); setDetail(null) }}
           onDelete={async () => { if (confirm('¿Eliminar este evento?')) { await del(detail.id); setDetail(null) } }} />
       )}
@@ -260,17 +289,27 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
         <NuevoEvento defaultDate={selected} profiles={profiles} companies={companies}
           onClose={() => setShowNew(false)} onSaved={() => { setShowNew(false); reload() }} />
       )}
+
+      {editingEvent && (
+        <EditarEvento ev={editingEvent} profiles={profiles} companies={companies}
+          onClose={() => setEditingEvent(null)} onSaved={() => { setEditingEvent(null); reload() }} />
+      )}
     </div>
   )
 }
 
-// Detalle de un evento (al hacer clic).
-function EventoDetalle({ ev, onClose, onToggle, onDelete }: { ev: Row; onClose: () => void; onToggle: () => void; onDelete: () => void }) {
+// Detalle de un evento
+function EventoDetalle({ ev, onClose, onToggle, onDelete, onEdit }: {
+  ev: Row; onClose: () => void; onToggle: () => void; onDelete: () => void; onEdit: () => void
+}) {
   const ts = typeStyle(ev.event_type)
   const done = ev.status === 'hecho'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const attendees = (ev.event_attendees ?? []).map((a: any) => a.profiles?.full_name).filter(Boolean)
   const fecha = new Date(ev.event_date + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  const fechaFin = ev.end_date && ev.end_date !== ev.event_date
+    ? new Date(ev.end_date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })
+    : null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -279,15 +318,29 @@ function EventoDetalle({ ev, onClose, onToggle, onDelete }: { ev: Row; onClose: 
             <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: ts.bg, color: ts.color }}>{ts.label}</span>
             {done && <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>Hecho</span>}
           </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#9aaac8] hover:bg-[#f4f7fa]"><X size={14} /></button>
+          <div className="flex items-center gap-1">
+            <button onClick={onEdit} title="Editar" className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ color: '#40b5fa', background: 'rgba(64,181,250,0.08)' }}>
+              <Pencil size={13} />
+            </button>
+            <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#9aaac8] hover:bg-[#f4f7fa]"><X size={14} /></button>
+          </div>
         </div>
         <div className="p-5 space-y-3">
           <h2 className="text-lg font-black" style={{ color: '#1a2e3b' }}>{ev.title}</h2>
           <div className="flex items-center gap-2 text-sm" style={{ color: '#4a5a6b' }}>
             <CalendarDays className="w-4 h-4" style={{ color: '#40b5fa' }} />
-            <span className="capitalize">{fecha}</span>
-            {ev.event_time && <><Clock className="w-4 h-4 ml-2" style={{ color: '#40b5fa' }} />{ev.event_time.slice(0, 5)}</>}
+            <span className="capitalize">{fecha}{fechaFin ? ` → ${fechaFin}` : ''}</span>
           </div>
+          {!ev.all_day && ev.event_time && (
+            <div className="flex items-center gap-2 text-sm" style={{ color: '#4a5a6b' }}>
+              <Clock className="w-4 h-4" style={{ color: '#40b5fa' }} />{ev.event_time.slice(0, 5)}
+            </div>
+          )}
+          {ev.all_day && (
+            <div className="flex items-center gap-2 text-sm" style={{ color: '#4a5a6b' }}>
+              <Clock className="w-4 h-4" style={{ color: '#40b5fa' }} />Todo el día
+            </div>
+          )}
           {ev.companies?.name && (
             <div className="flex items-center gap-2 text-sm" style={{ color: '#4a5a6b' }}>
               <Building2 className="w-4 h-4" style={{ color: '#40b5fa' }} />{ev.companies.name}
@@ -316,6 +369,146 @@ function EventoDetalle({ ev, onClose, onToggle, onDelete }: { ev: Row; onClose: 
   )
 }
 
+// Editar evento existente
+function EditarEvento({ ev, profiles, companies, onClose, onSaved }: {
+  ev: Row; profiles: Row[]; companies: Row[]; onClose: () => void; onSaved: () => void
+}) {
+  const [title, setTitle] = useState(ev.title ?? '')
+  const [typeChoice, setTypeChoice] = useState<string>(
+    ['auditoria', 'reunion'].includes(ev.event_type) ? ev.event_type : 'otro'
+  )
+  const [customType, setCustomType] = useState(
+    !['auditoria', 'reunion'].includes(ev.event_type) ? ev.event_type : ''
+  )
+  const [companyId, setCompanyId] = useState(ev.company_id ?? '')
+  const [date, setDate] = useState(ev.event_date ?? '')
+  const [endDate, setEndDate] = useState(ev.end_date ?? '')
+  const [allDay, setAllDay] = useState(ev.all_day ?? false)
+  const [time, setTime] = useState(ev.event_time?.slice(0, 5) ?? '')
+  const [notas, setNotas] = useState(ev.notas ?? '')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const initInvitees = new Set<string>((ev.event_attendees ?? []).map((a: any) => a.profiles?.id).filter(Boolean))
+  const [invitees, setInvitees] = useState<Set<string>>(initInvitees)
+  const [saving, setSaving] = useState(false)
+
+  function toggleInvitee(id: string) {
+    setInvitees(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
+
+  async function save() {
+    if (!title.trim() || !date) return
+    setSaving(true)
+    const supabase = createClient()
+    const event_type = !['auditoria', 'reunion'].includes(typeChoice) ? (customType.trim() || 'Otro') : typeChoice
+    await supabase.from('events').update({
+      title,
+      event_type,
+      company_id: companyId || null,
+      event_date: date,
+      end_date: endDate && endDate !== date ? endDate : null,
+      all_day: allDay,
+      event_time: allDay ? null : (time || null),
+      notas: notas || null,
+    }).eq('id', ev.id)
+
+    // Reemplazar invitados
+    await supabase.from('event_attendees').delete().eq('event_id', ev.id)
+    if (invitees.size > 0) {
+      await supabase.from('event_attendees').insert([...invitees].map(pid => ({ event_id: ev.id, profile_id: pid })))
+    }
+
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-t-2xl lg:rounded-2xl w-full lg:max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white" style={{ borderColor: '#e2e8f5' }}>
+          <h2 className="font-bold text-sm" style={{ color: '#1a2e3b' }}>Editar evento</h2>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#9aaac8] hover:bg-[#f4f7fa]"><X size={14} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <Field label="Título *"><input value={title} onChange={e => setTitle(e.target.value)} className={INP} style={INPS} /></Field>
+
+          <div>
+            <label className={LBL}>Tipo</label>
+            <div className="grid grid-cols-3 gap-2">
+              {([['reunion', 'Reunión'], ['auditoria', 'Auditoría'], ['otro', 'Otro']] as const).map(([id, lbl]) => (
+                <button key={id} type="button" onClick={() => setTypeChoice(id)}
+                  className="py-2 rounded-xl text-xs font-semibold transition-all"
+                  style={{ background: typeChoice === id ? 'rgba(64,181,250,0.12)' : '#f4f7fa', color: typeChoice === id ? '#40b5fa' : '#6b8fa0', border: `1px solid ${typeChoice === id ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}` }}>{lbl}</button>
+              ))}
+            </div>
+            {typeChoice === 'otro' && (
+              <input value={customType} onChange={e => setCustomType(e.target.value)} placeholder="Nombre del tipo" className={`${INP} mt-2`} style={INPS} />
+            )}
+          </div>
+
+          {/* Fecha inicio + fin */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Fecha inicio *"><input type="date" value={date} onChange={e => setDate(e.target.value)} className={INP} style={INPS} /></Field>
+            <Field label="Fecha fin (opcional)"><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={date} className={INP} style={INPS} /></Field>
+          </div>
+
+          {/* Hora / Todo el día */}
+          <div>
+            <label className={LBL}>Hora</label>
+            <div className="flex items-center gap-3 mb-2">
+              <button type="button" onClick={() => setAllDay((v: boolean) => !v)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all"
+                style={{ background: allDay ? 'rgba(167,139,250,0.12)' : '#f4f7fa', color: allDay ? '#a78bfa' : '#6b8fa0', border: `1px solid ${allDay ? 'rgba(167,139,250,0.35)' : 'rgba(0,40,80,0.10)'}` }}>
+                <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                  style={{ background: allDay ? '#a78bfa' : '#fff', border: `1.5px solid ${allDay ? '#a78bfa' : 'rgba(0,40,80,0.15)'}` }}>
+                  {allDay && <span className="text-white text-[9px]">✓</span>}
+                </span>
+                Todo el día
+              </button>
+            </div>
+            {!allDay && <input type="time" value={time} onChange={e => setTime(e.target.value)} className={INP} style={INPS} />}
+          </div>
+
+          <Field label="Cliente">
+            <select value={companyId} onChange={e => setCompanyId(e.target.value)} className={INP} style={INPS}>
+              <option value="">LCL (interno)</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+
+          <div>
+            <label className={LBL}>Invitados</label>
+            <div className="grid grid-cols-2 gap-2">
+              {profiles.map(p => {
+                const on = invitees.has(p.id)
+                return (
+                  <button key={p.id} type="button" onClick={() => toggleInvitee(p.id)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left"
+                    style={{ background: on ? 'rgba(167,139,250,0.10)' : '#f4f7fa', color: on ? '#a78bfa' : '#6b8fa0', border: `1px solid ${on ? 'rgba(167,139,250,0.35)' : 'rgba(0,40,80,0.10)'}` }}>
+                    <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ background: on ? '#a78bfa' : '#fff', border: `1.5px solid ${on ? '#a78bfa' : 'rgba(0,40,80,0.15)'}` }}>
+                      {on && <span className="text-white text-[9px]">✓</span>}
+                    </span>
+                    <span className="truncate">{p.full_name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <Field label="Notas"><textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2} placeholder="Opcional" className={`${INP} resize-none`} style={INPS} /></Field>
+        </div>
+        <div className="flex gap-3 px-5 pb-5">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border text-sm" style={{ borderColor: '#e2e8f5', color: '#6b7a9e' }}>Cancelar</button>
+          <button onClick={save} disabled={saving || !title.trim() || !date} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-1" style={{ background: '#40b5fa' }}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Nuevo evento
 function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
   defaultDate: string; profiles: Row[]; companies: Row[]; onClose: () => void; onSaved: () => void
 }) {
@@ -324,6 +517,8 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
   const [customType, setCustomType] = useState('')
   const [companyId, setCompanyId] = useState('')
   const [date, setDate] = useState(defaultDate)
+  const [endDate, setEndDate] = useState('')
+  const [allDay, setAllDay] = useState(false)
   const [time, setTime] = useState('')
   const [notas, setNotas] = useState('')
   const [invitees, setInvitees] = useState<Set<string>>(new Set())
@@ -340,20 +535,27 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
     const { data: { user } } = await supabase.auth.getUser()
     const event_type = typeChoice === 'otro' ? (customType.trim() || 'Otro') : typeChoice
     const { data: ev, error } = await supabase.from('events').insert([{
-      title, event_type, company_id: companyId || null, organizer_id: user?.id ?? null,
-      event_date: date, event_time: time || null, status: 'programado', notas: notas || null,
+      title,
+      event_type,
+      company_id: companyId || null,
+      organizer_id: user?.id ?? null,
+      event_date: date,
+      end_date: endDate && endDate !== date ? endDate : null,
+      all_day: allDay,
+      event_time: allDay ? null : (time || null),
+      status: 'programado',
+      notas: notas || null,
     }]).select().single()
     if (error) { setSaving(false); alert('No se pudo crear el evento: ' + error.message); return }
     if (ev && invitees.size > 0) {
       await supabase.from('event_attendees').insert([...invitees].map(pid => ({ event_id: ev.id, profile_id: pid })))
     }
-    // Notificar a invitados + admins (Laura y Daniel reciben todo).
     const admins = await adminIds(supabase)
-    const fecha = new Date(date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
+    const fechaLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
     await notify(supabase, {
       recipientIds: [...invitees, ...admins],
       type: 'evento_invitado',
-      message: `Evento "${title}" el ${fecha}${time ? ' ' + time : ''}`,
+      message: `Evento "${title}" el ${fechaLabel}${!allDay && time ? ' ' + time : ''}`,
       link: '/agenda',
       actorId: user?.id,
     })
@@ -362,8 +564,8 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-t-2xl lg:rounded-2xl w-full lg:max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white" style={{ borderColor: '#e2e8f5' }}>
           <h2 className="font-bold text-sm" style={{ color: '#1a2e3b' }}>Nuevo evento</h2>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#9aaac8] hover:bg-[#f4f7fa]"><X size={14} /></button>
@@ -371,18 +573,13 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
         <div className="p-5 space-y-4">
           <Field label="Título *"><input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Reunión SARLAF" className={INP} style={INPS} /></Field>
 
-          {/* Tipo */}
           <div>
             <label className={LBL}>Tipo</label>
             <div className="grid grid-cols-3 gap-2">
               {([['reunion', 'Reunión'], ['auditoria', 'Auditoría'], ['otro', 'Otro']] as const).map(([id, lbl]) => (
                 <button key={id} type="button" onClick={() => setTypeChoice(id)}
                   className="py-2 rounded-xl text-xs font-semibold transition-all"
-                  style={{
-                    background: typeChoice === id ? 'rgba(64,181,250,0.12)' : '#f4f7fa',
-                    color: typeChoice === id ? '#40b5fa' : '#6b8fa0',
-                    border: `1px solid ${typeChoice === id ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}`,
-                  }}>{lbl}</button>
+                  style={{ background: typeChoice === id ? 'rgba(64,181,250,0.12)' : '#f4f7fa', color: typeChoice === id ? '#40b5fa' : '#6b8fa0', border: `1px solid ${typeChoice === id ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}` }}>{lbl}</button>
               ))}
             </div>
             {typeChoice === 'otro' && (
@@ -390,9 +587,27 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
             )}
           </div>
 
+          {/* Fecha inicio + fin */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Fecha *"><input type="date" value={date} onChange={e => setDate(e.target.value)} className={INP} style={INPS} /></Field>
-            <Field label="Hora"><input type="time" value={time} onChange={e => setTime(e.target.value)} className={INP} style={INPS} /></Field>
+            <Field label="Fecha inicio *"><input type="date" value={date} onChange={e => setDate(e.target.value)} className={INP} style={INPS} /></Field>
+            <Field label="Fecha fin (opcional)"><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={date} className={INP} style={INPS} /></Field>
+          </div>
+
+          {/* Hora / Todo el día */}
+          <div>
+            <label className={LBL}>Hora</label>
+            <div className="flex items-center gap-3 mb-2">
+              <button type="button" onClick={() => setAllDay((v: boolean) => !v)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all"
+                style={{ background: allDay ? 'rgba(167,139,250,0.12)' : '#f4f7fa', color: allDay ? '#a78bfa' : '#6b8fa0', border: `1px solid ${allDay ? 'rgba(167,139,250,0.35)' : 'rgba(0,40,80,0.10)'}` }}>
+                <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                  style={{ background: allDay ? '#a78bfa' : '#fff', border: `1.5px solid ${allDay ? '#a78bfa' : 'rgba(0,40,80,0.15)'}` }}>
+                  {allDay && <span className="text-white text-[9px]">✓</span>}
+                </span>
+                Todo el día
+              </button>
+            </div>
+            {!allDay && <input type="time" value={time} onChange={e => setTime(e.target.value)} className={INP} style={INPS} />}
           </div>
 
           <Field label="Cliente">
@@ -402,7 +617,6 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
             </select>
           </Field>
 
-          {/* Invitados */}
           <div>
             <label className={LBL}>Invitados</label>
             <div className="grid grid-cols-2 gap-2">
@@ -411,12 +625,9 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
                 return (
                   <button key={p.id} type="button" onClick={() => toggleInvitee(p.id)}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left"
-                    style={{
-                      background: on ? 'rgba(167,139,250,0.10)' : '#f4f7fa',
-                      color: on ? '#a78bfa' : '#6b8fa0',
-                      border: `1px solid ${on ? 'rgba(167,139,250,0.35)' : 'rgba(0,40,80,0.10)'}`,
-                    }}>
-                    <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0" style={{ background: on ? '#a78bfa' : '#fff', border: `1.5px solid ${on ? '#a78bfa' : 'rgba(0,40,80,0.15)'}` }}>
+                    style={{ background: on ? 'rgba(167,139,250,0.10)' : '#f4f7fa', color: on ? '#a78bfa' : '#6b8fa0', border: `1px solid ${on ? 'rgba(167,139,250,0.35)' : 'rgba(0,40,80,0.10)'}` }}>
+                    <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ background: on ? '#a78bfa' : '#fff', border: `1.5px solid ${on ? '#a78bfa' : 'rgba(0,40,80,0.15)'}` }}>
                       {on && <span className="text-white text-[9px]">✓</span>}
                     </span>
                     <span className="truncate">{p.full_name}</span>
@@ -439,7 +650,7 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
   )
 }
 
-// ── INDICADORES (por responsable) ─────────────────────────────────────────────
+// ── INDICADORES ───────────────────────────────────────────────────────────────
 function Indicadores({ indicators, profiles, companies, reload }: { indicators: Row[]; profiles: Row[]; companies: Row[]; reload: () => void }) {
   const [showNew, setShowNew] = useState(false)
   const [form, setForm] = useState({ title: '', responsable_id: '', company_id: '', frequency: 'mensual', due_date: '', notas: '' })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2 } from 'lucide-react'
@@ -19,11 +19,13 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [assignedIds, setAssignedIds] = useState<Set<string>>(
+    new Set(currentUserId ? [currentUserId] : [])
+  )
   const [form, setForm] = useState({
     title: '',
     description: '',
     company_id: defaultClienteId ?? '',
-    assigned_to: currentUserId ?? '',
     priority: 'media',
     status: 'pendiente',
     due_date: '',
@@ -35,22 +37,31 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
+  function toggleAssignee(id: string) {
+    setAssignedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.title.trim()) { setError('El título es obligatorio'); return }
     if (!form.due_date) { setError('La fecha límite es obligatoria'); return }
-    if (!form.assigned_to) { setError('Asigna la tarea a alguien'); return }
+    if (assignedIds.size === 0) { setError('Asigna la tarea a alguien'); return }
     setLoading(true)
     setError('')
 
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
+    const assignedArr = [...assignedIds]
 
-    const { error } = await supabase.from('tasks').insert([{
+    const { data: task, error: insertErr } = await supabase.from('tasks').insert([{
       title: form.title,
       description: form.description || null,
       company_id: form.company_id || null,
-      assigned_to: form.assigned_to,
+      assigned_to: assignedArr[0],
       priority: form.priority,
       status: form.status,
       due_date: form.due_date,
@@ -58,15 +69,21 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
       recurrence: form.task_type === 'recurrente' ? form.recurrence : null,
       recurrence_active: form.task_type === 'recurrente',
       created_by: user?.id,
-    }])
+    }]).select().single()
 
-    if (error) { setError('Error: ' + error.message); setLoading(false); return }
+    if (insertErr) { setError('Error: ' + insertErr.message); setLoading(false); return }
 
-    // Notificar al responsable + admins (Laura y Daniel reciben todo).
+    // Guardar todos los asignados en task_assignees
+    if (task && assignedArr.length > 0) {
+      await supabase.from('task_assignees').insert(
+        assignedArr.map(pid => ({ task_id: task.id, profile_id: pid }))
+      )
+    }
+
     const cliente = companies.find(c => c.id === form.company_id)?.name
     const admins = await adminIds(supabase)
     await notify(supabase, {
-      recipientIds: [form.assigned_to, ...admins],
+      recipientIds: [...assignedArr, ...admins],
       type: 'tarea_asignada',
       message: `Nueva tarea: "${form.title}"${cliente ? ' · ' + cliente : ''}`,
       link: '/tareas',
@@ -113,7 +130,7 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
             <Fi label={form.task_type === 'recurrente' ? 'Primera fecha *' : 'Fecha límite *'} value={form.due_date} onChange={v => set('due_date', v)} type="date" />
           </div>
 
-          {/* Tipo de tarea */}
+          {/* Tipo */}
           <div>
             <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>Tipo</label>
             <div className="grid grid-cols-2 gap-2">
@@ -134,7 +151,6 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
             </div>
           </div>
 
-          {/* Frecuencia (solo recurrente) */}
           {form.task_type === 'recurrente' && (
             <Sel label="Frecuencia" value={form.recurrence} onChange={v => set('recurrence', v)}>
               {RECURRENCE_OPTIONS.map(r => (
@@ -146,17 +162,40 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
 
         {/* Asignación */}
         <Card label="Asignación">
-          <Sel label="Asignar a *" value={form.assigned_to} onChange={v => set('assigned_to', v)}>
-            <option value="">Seleccionar persona...</option>
-            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </Sel>
+          {/* Multi-select asignados */}
+          <div>
+            <label className="block text-xs font-semibold tracking-wide uppercase mb-2" style={{ color: '#6b8fa0' }}>
+              Asignar a * {assignedIds.size > 1 && <span style={{ color: '#40b5fa' }}>({assignedIds.size} personas)</span>}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {profiles.map(p => {
+                const on = assignedIds.has(p.id)
+                return (
+                  <button key={p.id} type="button" onClick={() => toggleAssignee(p.id)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left"
+                    style={{
+                      background: on ? 'rgba(64,181,250,0.10)' : '#f4f7fa',
+                      color: on ? '#40b5fa' : '#6b8fa0',
+                      border: `1px solid ${on ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}`,
+                    }}>
+                    <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ background: on ? '#40b5fa' : '#fff', border: `1.5px solid ${on ? '#40b5fa' : 'rgba(0,40,80,0.15)'}` }}>
+                      {on && <span className="text-white text-[9px]">✓</span>}
+                    </span>
+                    <span className="truncate">{p.full_name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <Sel label="Cliente" value={form.company_id} onChange={v => set('company_id', v)}>
             <option value="">LCL (interno)</option>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Sel>
         </Card>
 
-        {/* Preview prioridad */}
+        {/* Preview */}
         {form.title && (
           <div className="rounded-xl px-4 py-3 flex items-center gap-3"
             style={{
@@ -170,6 +209,7 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
               {form.due_date && (
                 <p className="text-xs" style={{ color: '#6b8fa0' }}>
                   Vence: {new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(new Date(form.due_date + 'T12:00:00'))}
+                  {assignedIds.size > 0 && ` · ${assignedIds.size} persona${assignedIds.size > 1 ? 's' : ''}`}
                 </p>
               )}
             </div>

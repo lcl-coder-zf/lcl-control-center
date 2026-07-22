@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import TareasList from './TareasList'
 import { createClient } from '@/lib/supabase/client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
@@ -10,34 +10,53 @@ import { PageSkeleton } from '@/components/ui/Skeleton'
 export default function TareasPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [profiles, setProfiles] = useState<any[]>([])
+  const [companies, setCompanies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [status, setStatus] = useState('todas')
   const [prioridad, setPrioridad] = useState('todas')
   const [asignado, setAsignado] = useState('todas')
   const [tipo, setTipo] = useState('todas')
 
+  const fetchTasks = useCallback(async () => {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('tasks')
+      .select('*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name), task_assignees(profile_id, profiles(id, full_name))')
+      .order('due_date', { ascending: true })
+    return data ?? []
+  }, [])
+
   useEffect(() => {
     const supabase = createClient()
     Promise.all([
-      supabase.from('tasks')
-        .select('*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name)')
-        .order('due_date', { ascending: true }),
+      fetchTasks(),
       supabase.from('profiles').select('id, full_name').order('full_name'),
-    ]).then(([{ data: t }, { data: p }]) => {
-      setTasks(t ?? [])
+      supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
+    ]).then(([t, { data: p }, { data: c }]) => {
+      setTasks(t)
       setProfiles(p ?? [])
+      setCompanies(c ?? [])
       setLoading(false)
     })
-  }, [])
+  }, [fetchTasks])
 
-  // Solo tareas principales cuentan en filtros y stats; las subtareas se anidan.
+  const refreshTasks = useCallback(async () => {
+    setRefreshing(true)
+    const data = await fetchTasks()
+    setTasks(data)
+    setRefreshing(false)
+  }, [fetchTasks])
+
   const mainTasks = useMemo(() => tasks.filter(t => !t.parent_id), [tasks])
 
   const filtered = useMemo(() => {
     return mainTasks.filter(t => {
       const matchStatus = status === 'todas' || t.status === status
       const matchPrioridad = prioridad === 'todas' || t.priority === prioridad
-      const matchAsignado = asignado === 'todas' || t.assigned_to === asignado
+      const matchAsignado = asignado === 'todas'
+        || t.assigned_to === asignado
+        || (t.task_assignees ?? []).some((a: any) => a.profile_id === asignado)
       const matchTipo = tipo === 'todas' || (tipo === 'recurrente' ? t.task_type === 'recurrente' : t.task_type !== 'recurrente')
       return matchStatus && matchPrioridad && matchAsignado && matchTipo
     })
@@ -52,14 +71,6 @@ export default function TareasPage() {
 
   const pColors: Record<string, string> = { critica: '#ff6b6b', alta: '#fb923c', media: '#ffd93d', baja: '#4ade80' }
 
-  const refreshTasks = () => {
-    const supabase = createClient()
-    supabase.from('tasks')
-      .select('*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name)')
-      .order('due_date', { ascending: true })
-      .then(({ data }) => setTasks(data ?? []))
-  }
-
   if (loading) return <PageSkeleton />
 
   return (
@@ -70,11 +81,18 @@ export default function TareasPage() {
           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#1a2e3b' }}>Tareas</h1>
           <p className="text-sm mt-1" style={{ color: '#6b8fa0' }}>{filtered.length} tarea{filtered.length !== 1 ? 's' : ''}</p>
         </div>
-        <Link href="/tareas/nueva"
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
-          style={{ background: '#40b5fa', color: '#ffffff' }}>
-          <Plus className="w-4 h-4" />Nueva tarea
-        </Link>
+        <div className="flex items-center gap-2">
+          <button onClick={refreshTasks} disabled={refreshing} title="Actualizar"
+            className="p-2.5 rounded-xl transition-all"
+            style={{ background: '#f4f7fa', color: '#6b8fa0', border: '1px solid rgba(0,40,80,0.08)' }}>
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <Link href="/tareas/nueva"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
+            style={{ background: '#40b5fa', color: '#ffffff' }}>
+            <Plus className="w-4 h-4" />Nueva tarea
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-3 mb-6">
@@ -152,8 +170,12 @@ export default function TareasPage() {
         ))}
       </div>
 
-      {/* Principales filtradas + todas las subtareas (para anidarlas) */}
-      <TareasList tasks={[...filtered, ...tasks.filter(t => t.parent_id)]} onRefresh={refreshTasks} />
+      <TareasList
+        tasks={[...filtered, ...tasks.filter(t => t.parent_id)]}
+        profiles={profiles}
+        companies={companies}
+        onRefresh={refreshTasks}
+      />
     </div>
   )
 }

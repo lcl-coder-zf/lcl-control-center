@@ -15,7 +15,7 @@ const ICON: Record<string, React.ElementType> = {
   indicador_nuevo: Gauge,
 }
 
-export default function NotificationBell() {
+export default function NotificationBell({ inline = false }: { inline?: boolean }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<Noti[]>([])
   const router = useRouter()
@@ -29,11 +29,10 @@ export default function NotificationBell() {
 
   useEffect(() => {
     load()
-    const t = setInterval(load, 30000) // refresca cada 30s
+    const t = setInterval(load, 30000)
     return () => clearInterval(t)
   }, [load])
 
-  // Cerrar al hacer click afuera.
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
@@ -68,10 +67,14 @@ export default function NotificationBell() {
     return `${Math.floor(s / 86400)}d`
   }
 
+  const wrapStyle: React.CSSProperties = inline
+    ? { position: 'relative' }
+    : { position: 'fixed', top: 16, right: 16, zIndex: 40 }
+
   return (
-    <div ref={ref} style={{ position: 'fixed', top: 16, right: 16, zIndex: 40 }}>
+    <div ref={ref} style={wrapStyle}>
       <button onClick={() => setOpen(o => !o)}
-        style={{ width: 40, height: 40, borderRadius: 10, background: '#fff', border: '1px solid rgba(0,40,80,0.12)', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
+        style={{ width: 40, height: 40, borderRadius: 10, background: inline ? '#f4f7fa' : '#fff', border: `1px solid rgba(0,40,80,${inline ? '0.06' : '0.12'})`, boxShadow: inline ? 'none' : '0 2px 8px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
         <Bell size={18} style={{ color: '#1a2e3b' }} />
         {unread > 0 && (
           <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: '#ff6b6b', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -81,7 +84,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div style={{ position: 'absolute', top: 48, right: 0, width: 340, maxHeight: 440, overflowY: 'auto', background: '#fff', borderRadius: 16, border: '1px solid rgba(0,40,80,0.10)', boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}>
+        <div style={{ position: 'absolute', top: 48, right: 0, width: 320, maxHeight: 440, overflowY: 'auto', background: '#fff', borderRadius: 16, border: '1px solid rgba(0,40,80,0.10)', boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid rgba(0,40,80,0.08)', position: 'sticky', top: 0, background: '#fff' }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: '#1a2e3b' }}>Notificaciones</span>
             {unread > 0 && (
