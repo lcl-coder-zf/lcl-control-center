@@ -406,6 +406,20 @@ function EntradaModal({
       await supabase.from('schedule_entries').update(payload).eq('id', existing.id)
     } else {
       await supabase.from('schedule_entries').insert([payload])
+      // Push al consultor avisando que le programaron algo
+      const actividadLabel = activityType === 'cliente'
+        ? (companies.find(c => c.id === companyId)?.name ?? 'un cliente')
+        : activity.trim()
+      fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `📅 Cronograma actualizado`,
+          body: `${dayLabel} ${dateLabel}: ${actividadLabel}`,
+          url: '/cronograma',
+          topic: 'general',
+        }),
+      }).catch(() => {})
     }
 
     setSaving(false)

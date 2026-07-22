@@ -66,6 +66,17 @@ export default function TareasList({
     } else {
       await supabase.from('tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', task.id)
       await regenerateIfRecurring(supabase, task)
+      // Push a admins cuando se completa una tarea
+      fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: '✅ Tarea completada',
+          body: `"${task.title}"${task.companies?.name ? ' · ' + task.companies.name : ''}`,
+          url: '/tareas',
+          topic: 'admin',
+        }),
+      }).catch(() => {})
     }
     setCompleting(null)
     onRefresh?.()
