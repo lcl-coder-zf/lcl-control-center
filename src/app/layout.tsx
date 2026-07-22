@@ -10,7 +10,7 @@ const poppins = Poppins({
 })
 
 export const viewport: Viewport = {
-  themeColor: '#0a1628',
+  themeColor: '#ffffff',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: 'LCL Control',
   },
   icons: {
