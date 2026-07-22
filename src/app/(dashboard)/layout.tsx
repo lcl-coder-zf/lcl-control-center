@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   module_clientes:      'all',
   module_tareas:        'all',
   module_agenda:        'all',
+  module_cronograma:    'all',
   module_equipo:        'all',
   module_vault:         'admin',
   module_configuracion: 'admin',

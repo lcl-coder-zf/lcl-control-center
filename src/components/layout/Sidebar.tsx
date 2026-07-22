@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Building2, CheckSquare,
-  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings, Users,
+  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings, Users, CalendarRange,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: '/clientes',      icon: Building2,       label: 'Clientes',      module: 'clientes' },
   { href: '/tareas',        icon: CheckSquare,     label: 'Tareas',        module: 'tareas' },
   { href: '/agenda',        icon: CalendarClock,   label: 'Agenda',        module: 'agenda' },
+  { href: '/cronograma',    icon: CalendarRange,   label: 'Cronograma',    module: 'cronograma' },
   { href: '/equipo',        icon: Users,           label: 'Equipo',        module: 'equipo' },
   { href: '/vault',         icon: KeyRound,        label: 'Vault',         module: 'vault' },
   { href: '/configuracion', icon: Settings,        label: 'Configuración', module: 'configuracion' },
@@ -64,7 +65,7 @@ export default function Sidebar({ profile, moduleSettings, isOpen, onClose, onTo
       {/* Brand */}
       <div style={{ padding: '16px', borderBottom: '1px solid rgba(0,40,80,0.08)', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 32, height: 32, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(0,40,80,0.10)', flexShrink: 0 }}>
-          <Image src="/icon.png" alt="LCL" width={32} height={32} style={{ objectFit: 'contain' }} />
+          <Image src="/icon-192.png" alt="LCL" width={32} height={32} style={{ objectFit: 'contain' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: '#1a2e3b', margin: 0, letterSpacing: '0.02em' }}>LCL Control</p>
