@@ -310,7 +310,12 @@ function CronogramaCell({ entry, isToday, isLast, sc, onClick }: {
             <span className="text-[9px] px-1.5 py-0.5 rounded"
               style={{ background: 'rgba(0,40,80,0.06)', color: '#6b8fa0', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
               <Clock className="w-2 h-2" />
-              {entry.session === 'medio_manana' ? 'Mañana' : entry.session === 'medio_tarde' ? 'Tarde' : entry.session === 'no_aplica' ? 'N/A' : entry.session}
+              {entry.session === 'medio_manana' ? 'Mañana'
+                : entry.session === 'medio_tarde' ? 'Tarde'
+                : entry.session === 'no_aplica' ? 'N/A'
+                : entry.session === 'personalizado' && entry.start_time && entry.end_time
+                  ? `${entry.start_time.slice(0,5)}–${entry.end_time.slice(0,5)}`
+                  : entry.session}
             </span>
           )}
           {/* Status check */}
@@ -359,6 +364,8 @@ function EntradaModal({
   const [companyId, setCompanyId] = useState(existing?.company_id ?? '')
   const [activity, setActivity] = useState(existing?.activity ?? '')
   const [session, setSession] = useState(existing?.session ?? 'todo_el_dia')
+  const [startTime, setStartTime] = useState(existing?.start_time ?? '')
+  const [endTime, setEndTime] = useState(existing?.end_time ?? '')
   const [notas, setNotas] = useState(existing?.notas ?? '')
   const [status, setStatus] = useState(existing?.status ?? 'programado')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -377,6 +384,11 @@ function EntradaModal({
     const supabase = createClient()
     const weekKey = toKey(weekStart)
 
+    if (session === 'personalizado') {
+      if (!startTime) { alert('Ingresa la hora de inicio'); setSaving(false); return }
+      if (!endTime)   { alert('Ingresa la hora de fin'); setSaving(false); return }
+    }
+
     const payload = {
       profile_id: profile.id,
       week_start: weekKey,
@@ -384,6 +396,8 @@ function EntradaModal({
       company_id: activityType === 'cliente' ? companyId : null,
       activity: activityType === 'libre' ? activity.trim() : (activity.trim() || null),
       session,
+      start_time: session === 'personalizado' ? startTime : null,
+      end_time:   session === 'personalizado' ? endTime   : null,
       notas: notas.trim() || null,
       status,
     }
@@ -484,6 +498,31 @@ function EntradaModal({
                 </button>
               ))}
             </div>
+
+            {/* Time inputs when "Horario específico" */}
+            {session === 'personalizado' && (
+              <div className="flex items-center gap-2 mt-3">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#86a2b2' }}>Desde</label>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    style={{ ...INP, textAlign: 'center', fontWeight: 600 }}
+                  />
+                </div>
+                <div className="pt-4" style={{ color: '#86a2b2', fontSize: 18, fontWeight: 700 }}>→</div>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#86a2b2' }}>Hasta</label>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    style={{ ...INP, textAlign: 'center', fontWeight: 600 }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Estado */}
