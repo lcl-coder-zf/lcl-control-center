@@ -92,7 +92,7 @@ export default function ConfiguracionPage() {
           Recibe notificaciones en el celular aunque la app esté cerrada. Actívalas en cada dispositivo.
         </p>
         <div className="rounded-2xl px-5 py-5" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
-          <PushToggle topics={['general', 'admin']} />
+          <PushToggle topics={isAdmin ? ['general', 'admin'] : ['general']} />
         </div>
       </section>
 
