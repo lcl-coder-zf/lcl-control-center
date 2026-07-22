@@ -6,8 +6,9 @@ import { ROLE_LABELS } from '@/types'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   Shield, Eye, EyeOff, Loader2, Check,
-  LayoutDashboard, Building2, CheckSquare, CalendarClock, Users, KeyRound, Settings,
+  LayoutDashboard, Building2, CheckSquare, CalendarClock, Users, KeyRound, Settings, Bell,
 } from 'lucide-react'
+import PushToggle from '@/components/ui/PushToggle'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any
@@ -80,6 +81,20 @@ export default function ConfiguracionPage() {
           Solo los super admin (Laura y Daniel) pueden cambiar la configuración.
         </div>
       )}
+
+      {/* ── Notificaciones push ── */}
+      <section>
+        <div className="flex items-center gap-2 mb-1">
+          <Bell className="w-4 h-4" style={{ color: '#40b5fa' }} />
+          <h2 className="text-base font-black" style={{ color: '#1a2e3b' }}>Notificaciones push</h2>
+        </div>
+        <p className="text-xs mb-4" style={{ color: '#6b8fa0' }}>
+          Recibe notificaciones en el celular aunque la app esté cerrada. Actívalas en cada dispositivo.
+        </p>
+        <div className="rounded-2xl px-5 py-5" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
+          <PushToggle topics={['general', 'admin']} />
+        </div>
+      </section>
 
       {/* ── Módulos ── */}
       <section>
