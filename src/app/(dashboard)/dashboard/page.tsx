@@ -8,7 +8,7 @@ import { ROLE_LABELS } from '@/types'
 import { RECURRENCE_CONFIG, regenerateIfRecurring, type Recurrence } from '@/lib/tasks'
 import {
   Building2, AlertTriangle, CalendarClock,
-  TrendingUp, Users, CheckCircle2, CheckSquare, Circle,
+  Users, CheckCircle2, CheckSquare, Circle,
   Clock, RefreshCw, Loader2, ArrowRight,
 } from 'lucide-react'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
@@ -70,27 +70,29 @@ export default function DashboardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const semana = active.filter((t: any) => { const d = daysUntil(t.due_date); return d > 0 && d <= 7 })
 
-  // Avance por cliente = % de tareas principales completadas de ese cliente.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const clientesProgreso = data.clientes.map((c: any) => {
+  // Tareas por cliente = ranking por carga de tareas activas (pendientes).
+  const clientesCarga = data.clientes.map((c: { id: string; name: string }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ts = data.allTasks.filter((t: any) => t.company_id === c.id)
+    const ts = active.filter((t: any) => t.company_id === c.id)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const done = ts.filter((t: any) => t.status === 'completada').length
-    const progress = ts.length > 0 ? Math.round((done / ts.length) * 100) : 0
-    return { ...c, progress, total: ts.length }
-  }).sort((a: { total: number; name: string }, b: { total: number; name: string }) =>
-    // Primero los que tienen tareas; luego alfabético.
-    (b.total > 0 ? 1 : 0) - (a.total > 0 ? 1 : 0) || a.name.localeCompare(b.name))
+    const overdue = ts.filter((t: any) => daysUntil(t.due_date) < 0).length
+    return { id: c.id, name: c.name, count: ts.length, overdue }
+  }).filter((c: { count: number }) => c.count > 0)
+    .sort((a: { count: number; name: string }, b: { count: number; name: string }) =>
+      b.count - a.count || a.name.localeCompare(b.name))
+  const maxCarga = clientesCarga.length > 0 ? clientesCarga[0].count : 0
 
-  const conTareas = clientesProgreso.filter((c: { total: number }) => c.total > 0)
-  const avgProgress = conTareas.length > 0
-    ? Math.round(conTareas.reduce((acc: number, c: { progress: number }) => acc + c.progress, 0) / conTareas.length)
-    : 0
+  // Tareas completadas en los últimos 7 días.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const completadas7d = data.allTasks.filter((t: any) => {
+    if (t.status !== 'completada' || !t.completed_at) return false
+    const d = daysUntil(t.completed_at)
+    return d <= 0 && d >= -7
+  }).length
 
   const kpis = [
     { label: 'Clientes activos',   value: data.clientes.length,    icon: Building2,     color: '#40b5fa' },
-    { label: 'Avance promedio',    value: `${avgProgress}%`,       icon: TrendingUp,    color: '#4ade80' },
+    { label: 'Completadas (7d)',   value: completadas7d,           icon: CheckCircle2,  color: '#4ade80' },
     { label: 'Por hacer',          value: active.length,           icon: CheckSquare,   color: '#a78bfa' },
     { label: 'Atrasadas',          value: atrasadas.length,        icon: AlertTriangle, color: '#ff6b6b' },
     { label: 'Vencen esta semana', value: hoy.length + semana.length, icon: CalendarClock, color: '#ffd93d' },
@@ -238,30 +240,34 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Avance por cliente */}
+      {/* Tareas por cliente — ranking por carga activa */}
       <div className="rounded-2xl p-6" style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
         <h3 className="font-semibold text-sm flex items-center gap-2 mb-5" style={{ color: '#1a2e3b' }}>
-          <Building2 className="w-4 h-4" style={{ color: '#40b5fa' }} />Avance por cliente
+          <Building2 className="w-4 h-4" style={{ color: '#40b5fa' }} />Tareas por cliente
         </h3>
-        {clientesProgreso.length > 0 ? (
+        {clientesCarga.length > 0 ? (
           <div className="space-y-3">
-            {clientesProgreso.slice(0, 20).map((c: { id: string; name: string; progress: number; total: number }) => {
-              const barColor = c.progress < 30 ? '#ff6b6b' : c.progress < 70 ? '#ffd93d' : '#4ade80'
+            {clientesCarga.slice(0, 20).map((c: { id: string; name: string; count: number; overdue: number }) => {
+              const pct = maxCarga > 0 ? Math.round((c.count / maxCarga) * 100) : 0
+              const barColor = c.overdue > 0 ? '#ff6b6b' : '#40b5fa'
               return (
                 <Link key={c.id} href={`/clientes/${c.id}`} className="flex items-center gap-4 group">
                   <span className="text-sm truncate flex-1 group-hover:underline" style={{ color: '#1a2e3b', minWidth: 0 }}>{c.name}</span>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="w-36 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.05)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${c.progress}%`, background: barColor }} />
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
                     </div>
-                    <span className="text-xs font-semibold w-8 text-right tabular-nums" style={{ color: '#6b8fa0' }}>{c.progress}%</span>
+                    <span className="text-xs font-semibold w-14 text-right tabular-nums flex items-center justify-end gap-1" style={{ color: '#6b8fa0' }}>
+                      {c.overdue > 0 && <AlertTriangle className="w-3 h-3" style={{ color: '#ff6b6b' }} />}
+                      {c.count}
+                    </span>
                   </div>
                 </Link>
               )
             })}
           </div>
         ) : (
-          <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Sin clientes activos</p>
+          <p className="text-sm text-center py-4" style={{ color: '#6b8fa0' }}>Sin tareas activas</p>
         )}
       </div>
     </div>
