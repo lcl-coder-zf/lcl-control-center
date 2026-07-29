@@ -28,23 +28,26 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthPage = request.nextUrl.pathname.startsWith('/login')
-  const isDashboard =
-    request.nextUrl.pathname.startsWith('/dashboard') ||
-    request.nextUrl.pathname.startsWith('/clientes') ||
-    request.nextUrl.pathname.startsWith('/proyectos') ||
-    request.nextUrl.pathname.startsWith('/tareas') ||
-    request.nextUrl.pathname.startsWith('/agenda') ||
-    request.nextUrl.pathname.startsWith('/vault') ||
-    request.nextUrl.pathname.startsWith('/configuracion')
+  const pathname = request.nextUrl.pathname
 
-  if (!user && isDashboard) {
+  // Todo es privado salvo lo que esté acá. La lista estaba al revés —se
+  // enumeraban las rutas privadas— y así cada módulo nuevo nacía desprotegido:
+  // pasó con /configuracion, y volvió a pasar con /cronograma y /equipo.
+  //
+  // `/api` queda por fuera porque cada ruta trae su propia autenticación
+  // (sesión de Supabase o CRON_SECRET), y el manifiesto y el service worker
+  // porque el navegador los pide ANTES de iniciar sesión: si se redirigen,
+  // la PWA se instala como marcador, sin modo app ni notificaciones.
+  const RUTAS_PUBLICAS = ['/login', '/api', '/manifest.json', '/sw.js']
+  const esPublica = RUTAS_PUBLICAS.some(ruta => pathname.startsWith(ruta))
+
+  if (!user && !esPublica) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
-  if (user && isAuthPage) {
+  if (user && pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
-  if (user && request.nextUrl.pathname === '/') {
+  if (user && pathname === '/') {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
