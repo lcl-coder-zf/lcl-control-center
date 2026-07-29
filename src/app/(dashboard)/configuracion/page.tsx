@@ -10,7 +10,6 @@ import {
   UserCircle, Pencil, CreditCard, Phone, CalendarDays,
 } from 'lucide-react'
 import PushToggle from '@/components/ui/PushToggle'
-import InstallHelp from '@/components/ui/InstallHelp'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any
@@ -127,7 +126,6 @@ export default function ConfiguracionPage() {
         </p>
         <div className="rounded-2xl px-5 py-5" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
           <PushToggle topics={isAdmin ? ['general', 'admin'] : ['general']} />
-          <InstallHelp />
         </div>
       </section>
 

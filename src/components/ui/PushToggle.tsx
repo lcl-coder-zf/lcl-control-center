@@ -126,7 +126,7 @@ export default function PushToggle({ topics }: { topics?: string[] }) {
       <span>
         Primero agrega la app a la pantalla de inicio.<br />
         <span style={{ color: '#6b8fa0', fontSize: 12 }}>
-          Compartir → Agregar a pantalla de inicio, y vuelve a entrar desde el ícono. Mira los pasos abajo.
+          En Safari: Compartir → Agregar a pantalla de inicio, y vuelve a entrar desde el ícono.
         </span>
       </span>
     </span>
