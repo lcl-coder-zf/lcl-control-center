@@ -11,7 +11,16 @@ import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
 import { ROLE_LABELS } from '@/types'
 
-const NAV_ITEMS = [
+interface NavItem {
+  href: string
+  icon: typeof LayoutDashboard
+  label: string
+  module: string | null
+  /** Texto alterno para consultores (opcional). */
+  labelConsultor?: string
+}
+
+const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',     module: null },
   { href: '/clientes',      icon: Building2,       label: 'Clientes',      module: 'clientes' },
   { href: '/tareas',        icon: CheckSquare,     label: 'Tareas',        module: 'tareas' },
@@ -19,7 +28,9 @@ const NAV_ITEMS = [
   { href: '/cronograma',    icon: CalendarRange,   label: 'Cronograma',    module: 'cronograma' },
   { href: '/equipo',        icon: Users,           label: 'Equipo',        module: 'equipo' },
   { href: '/vault',         icon: KeyRound,        label: 'Vault',         module: 'vault' },
-  { href: '/configuracion', icon: Settings,        label: 'Configuración', module: 'configuracion' },
+  // Siempre visible: es la única puerta a las notificaciones push y al perfil
+  // propio. La página misma esconde las secciones de admin.
+  { href: '/configuracion', icon: Settings,        label: 'Configuración', module: null, labelConsultor: 'Mi cuenta' },
 ]
 
 interface SidebarProps {
@@ -87,8 +98,9 @@ export default function Sidebar({ profile, moduleSettings, isOpen, onClose, onTo
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-        {NAV_ITEMS.filter(item => isVisible(item.module)).map(({ href, icon: Icon, label }) => {
+        {NAV_ITEMS.filter(item => isVisible(item.module)).map(({ href, icon: Icon, label, labelConsultor }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+          const texto  = profile.role !== 'admin' && labelConsultor ? labelConsultor : label
           return (
             <Link key={href} href={href} onClick={onClose}
               style={{
@@ -100,7 +112,7 @@ export default function Sidebar({ profile, moduleSettings, isOpen, onClose, onTo
                 border: active ? '1px solid rgba(64,181,250,0.20)' : '1px solid transparent',
               }}>
               <Icon size={16} style={{ flexShrink: 0 }} />
-              <span style={{ flex: 1 }}>{label}</span>
+              <span style={{ flex: 1 }}>{texto}</span>
               {active && <ChevronRight size={12} style={{ opacity: 0.6 }} />}
             </Link>
           )

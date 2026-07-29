@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bell, BellOff, BellRing, Loader2 } from 'lucide-react'
+import { Bell, BellOff, BellRing, Loader2, Smartphone } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
@@ -13,7 +13,18 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return arr
 }
 
-type Estado = 'cargando' | 'no-soportado' | 'inactivo' | 'activo' | 'bloqueado' | 'trabajando'
+type Estado = 'cargando' | 'no-soportado' | 'sin-instalar' | 'inactivo' | 'activo' | 'bloqueado' | 'trabajando'
+
+/** iOS solo expone PushManager cuando la PWA corre desde el ícono de inicio. */
+function esIOS(): boolean {
+  const ua = navigator.userAgent
+  return /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)
+}
+
+function esStandalone(): boolean {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+}
 
 export default function PushToggle({ topics }: { topics?: string[] }) {
   const [estado, setEstado] = useState<Estado>('cargando')
@@ -41,7 +52,8 @@ export default function PushToggle({ topics }: { topics?: string[] }) {
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      setEstado('no-soportado'); return
+      // En iPhone esto NO es "no soportado": es que falta agregar la app a inicio.
+      setEstado(esIOS() && !esStandalone() ? 'sin-instalar' : 'no-soportado'); return
     }
     if (Notification.permission === 'denied') { setEstado('bloqueado'); return }
     ;(async () => {
@@ -105,6 +117,18 @@ export default function PushToggle({ topics }: { topics?: string[] }) {
   if (estado === 'no-soportado') return (
     <span className="inline-flex items-center gap-2 text-sm" style={{ color: '#86a2b2' }}>
       <BellOff size={16} /> No soportado en este navegador
+    </span>
+  )
+  if (estado === 'sin-instalar') return (
+    <span className="inline-flex items-start gap-2 px-3 py-2 rounded-xl text-sm font-medium"
+      style={{ background: 'rgba(64,181,250,0.08)', color: '#1a2e3b', border: '1px solid rgba(64,181,250,0.25)' }}>
+      <Smartphone size={16} style={{ color: '#40b5fa', flexShrink: 0, marginTop: 2 }} />
+      <span>
+        Primero agrega la app a la pantalla de inicio.<br />
+        <span style={{ color: '#6b8fa0', fontSize: 12 }}>
+          Compartir → Agregar a pantalla de inicio, y vuelve a entrar desde el ícono. Mira los pasos abajo.
+        </span>
+      </span>
     </span>
   )
   if (estado === 'bloqueado') return (

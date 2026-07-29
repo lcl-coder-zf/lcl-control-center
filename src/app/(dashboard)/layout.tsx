@@ -10,7 +10,8 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   module_cronograma:    'all',
   module_equipo:        'all',
   module_vault:         'admin',
-  module_configuracion: 'admin',
+  // Configuración no lleva flag: siempre visible para todos. Es la única puerta
+  // a las notificaciones push y al perfil propio; la página esconde lo de admin.
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
