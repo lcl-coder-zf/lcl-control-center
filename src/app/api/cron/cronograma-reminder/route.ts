@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendPush } from '@/lib/push'
+import { getAdmins, sendPushToProfiles } from '@/lib/push'
 
 // GET /api/cron/cronograma-reminder
 // Corre cada día lun-vie a las 6am Colombia (UTC 11:00)
-// Busca las entradas del cronograma de hoy y envía push a cada consultor.
+// Cada consultora recibe SU agenda del día; los admins reciben un solo resumen
+// del equipo, no una copia de la agenda de cada quien.
 function getMonday(d: Date): string {
   const date = new Date(d)
   const day = date.getDay()
@@ -12,6 +13,8 @@ function getMonday(d: Date): string {
   date.setDate(diff)
   return date.toISOString().split('T')[0]
 }
+
+const primerNombre = (n?: string | null) => (n ?? 'Alguien').trim().split(/\s+/)[0]
 
 export async function GET(req: NextRequest) {
   const secret = req.headers.get('authorization')
@@ -42,12 +45,14 @@ export async function GET(req: NextRequest) {
   }
 
   let totalSent = 0
+  const resumen: string[] = []
+
   for (const entry of entries) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const perfil = (entry as any).profiles
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const empresa = (entry as any).companies
-    if (!perfil?.email) continue
+    if (!perfil?.id) continue
 
     const actividad = empresa?.name ?? entry.activity ?? 'Actividad programada'
     const horario = entry.start_time && entry.end_time
@@ -56,11 +61,25 @@ export async function GET(req: NextRequest) {
       : entry.session === 'medio_tarde' ? 'Tarde'
       : 'Todo el día'
 
-    const { sent } = await sendPush('general', {
-      title: `📅 Tu agenda de hoy`,
+    // Solo a la dueña de la agenda.
+    const { sent } = await sendPushToProfiles([perfil.id], {
+      title: '📅 Tu agenda de hoy',
       body: `${actividad} · ${horario}`,
       url: '/cronograma',
       tag: `cronograma-${entry.id}`,
+    })
+    totalSent += sent
+    resumen.push(`${primerNombre(perfil.full_name)}: ${actividad}`)
+  }
+
+  // Un único resumen del día para los admins.
+  const adminIds = (await getAdmins()).map((a) => a.id)
+  if (adminIds.length && resumen.length) {
+    const { sent } = await sendPushToProfiles(adminIds, {
+      title: '📅 Agenda del equipo hoy',
+      body: resumen.join(' · '),
+      url: '/cronograma',
+      tag: `cronograma-resumen-${weekStart}-${dayOfWeek}`,
     })
     totalSent += sent
   }

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence } from '@/lib/tasks'
 import { notify, adminIds } from '@/lib/notify'
+import { pushNotify } from '@/lib/push-client'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)',   label: 'Baja' },
@@ -85,11 +86,13 @@ export default function ClienteTareas({ companyId, companyName, initialTasks, pr
         link: `/clientes/${companyId}`,
         actorId: userId,
       })
-      fetch('/api/push/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: '📋 Nueva tarea', body: tareaMsg, url: `/clientes/${companyId}`, topic: 'general' }),
-      }).catch(() => {})
+      await pushNotify(supabase, {
+        title: '📋 Nueva tarea',
+        body: tareaMsg,
+        url: `/clientes/${companyId}`,
+        recipientIds: [data.assigned_to],
+        toAdmins: true,
+      })
       setNewTask({ title: '', due_date: '', priority: 'media', assigned_to: '', task_type: 'esporadica', recurrence: 'mensual' })
       setShowNewTask(false)
     }

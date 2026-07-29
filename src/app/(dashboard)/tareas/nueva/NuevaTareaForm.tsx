@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS } from '@/lib/tasks'
 import { notify, adminIds } from '@/lib/notify'
+import { pushNotify } from '@/lib/push-client'
 
 interface Props {
   companies: { id: string; name: string }[]
@@ -90,11 +91,13 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
       link: '/tareas',
       actorId: user?.id,
     })
-    fetch('/api/push/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '📋 Nueva tarea asignada', body: msg, url: '/tareas', topic: 'general' }),
-    }).catch(() => {})
+    await pushNotify(supabase, {
+      title: '📋 Nueva tarea asignada',
+      body: msg,
+      url: '/tareas',
+      recipientIds: assignedArr,
+      toAdmins: true,
+    })
 
     router.push('/tareas')
     router.refresh()

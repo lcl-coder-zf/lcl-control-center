@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { daysUntil, formatDate } from '@/lib/utils'
 import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS, nextDueDate, type Recurrence } from '@/lib/tasks'
 import { notify, adminIds } from '@/lib/notify'
+import { pushNotify } from '@/lib/push-client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   CalendarDays, Gauge, Plus, X, Loader2, Circle, Trash2, RefreshCw,
@@ -560,11 +561,13 @@ function NuevoEvento({ defaultDate, profiles, companies, onClose, onSaved }: {
       link: '/agenda',
       actorId: user?.id,
     })
-    fetch('/api/push/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '📅 Nuevo evento', body: eventoMsg, url: '/agenda', topic: 'general' }),
-    }).catch(() => {})
+    await pushNotify(supabase, {
+      title: '📅 Nuevo evento',
+      body: eventoMsg,
+      url: '/agenda',
+      recipientIds: [...invitees],
+      toAdmins: true,
+    })
     setSaving(false)
     onSaved()
   }

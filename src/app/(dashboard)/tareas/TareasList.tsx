@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { pushNotify } from '@/lib/push-client'
 import { regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence } from '@/lib/tasks'
 
 function ProgressRing({ done, total }: { done: number; total: number }) {
@@ -67,16 +68,12 @@ export default function TareasList({
       await supabase.from('tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', task.id)
       await regenerateIfRecurring(supabase, task)
       // Push a admins cuando se completa una tarea
-      fetch('/api/push/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: '✅ Tarea completada',
-          body: `"${task.title}"${task.companies?.name ? ' · ' + task.companies.name : ''}`,
-          url: '/tareas',
-          topic: 'admin',
-        }),
-      }).catch(() => {})
+      await pushNotify(supabase, {
+        title: '✅ Tarea completada',
+        body: `"${task.title}"${task.companies?.name ? ' · ' + task.companies.name : ''}`,
+        url: '/tareas',
+        toAdmins: true,
+      })
     }
     setCompleting(null)
     onRefresh?.()

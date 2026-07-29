@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { pushNotify } from '@/lib/push-client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   ChevronLeft, ChevronRight, Plus, X, Loader2, Check, Clock,
@@ -410,16 +411,13 @@ function EntradaModal({
       const actividadLabel = activityType === 'cliente'
         ? (companies.find(c => c.id === companyId)?.name ?? 'un cliente')
         : activity.trim()
-      fetch('/api/push/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: `📅 Cronograma actualizado`,
-          body: `${dayLabel} ${dateLabel}: ${actividadLabel}`,
-          url: '/cronograma',
-          topic: 'general',
-        }),
-      }).catch(() => {})
+      await pushNotify(supabase, {
+        title: '📅 Cronograma actualizado',
+        body: `${dayLabel} ${dateLabel}: ${actividadLabel}`,
+        url: '/cronograma',
+        recipientIds: [profile.id],
+        toAdmins: true,
+      })
     }
 
     setSaving(false)

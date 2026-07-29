@@ -93,8 +93,11 @@ export default function PushToggle({ topics }: { topics?: string[] }) {
       if (!ok) { setMsg('No se pudo guardar la suscripción.'); setEstado('inactivo'); return }
 
       setEstado('activo')
-      const topic = topics?.[0] ?? 'general'
-      fetch(`/api/push/test?topic=${encodeURIComponent(topic)}`, { method: 'POST' }).catch(() => {})
+      const tk = await getToken()
+      fetch('/api/push/test', {
+        method: 'POST',
+        headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+      }).catch(() => {})
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Error activando notificaciones.')
       setEstado('inactivo')
@@ -103,10 +106,13 @@ export default function PushToggle({ topics }: { topics?: string[] }) {
 
   async function probar() {
     setMsg(null)
-    const topic = topics?.[0] ?? 'general'
-    const r = await fetch(`/api/push/test?topic=${encodeURIComponent(topic)}`, { method: 'POST' })
+    const tk = await getToken()
+    const r = await fetch('/api/push/test', {
+      method: 'POST',
+      headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+    })
     const j = await r.json().catch(() => ({}))
-    setMsg(j?.sent ? `Enviada a ${j.sent} dispositivo(s).` : 'Nadie suscrito todavía.')
+    setMsg(j?.sent ? `Enviada a ${j.sent} de tus dispositivos.` : 'Este dispositivo aún no está suscrito.')
   }
 
   if (estado === 'cargando') return (

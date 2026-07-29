@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { notify, adminIds } from '@/lib/notify'
+import { pushNotify } from '@/lib/push-client'
 import { ArrowLeft, Loader2, Camera } from 'lucide-react'
 import Link from 'next/link'
 
@@ -83,11 +84,12 @@ export default function NuevoClientePage() {
       link: nuevo ? `/clientes/${nuevo.id}` : '/clientes',
       actorId: user?.id,
     })
-    fetch('/api/push/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '🏢 Nuevo cliente', body: `Se agregó ${form.name}`, url: '/clientes', topic: 'admin' }),
-    }).catch(() => {})
+    await pushNotify(supabase, {
+      title: '🏢 Nuevo cliente',
+      body: `Se agregó ${form.name}`,
+      url: nuevo ? `/clientes/${nuevo.id}` : '/clientes',
+      toAdmins: true,
+    })
 
     router.push('/clientes')
     router.refresh()

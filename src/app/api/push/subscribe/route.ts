@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
       endpoint:     sub.endpoint,
       p256dh:       sub.keys.p256dh,
       auth:         sub.keys.auth,
-      user_email:   email,
+      // en minúsculas: el enrutamiento por persona busca por este campo
+      user_email:   email ? email.trim().toLowerCase() : null,
       label:        body.label ?? null,
       topics:       Array.isArray(body.topics) && body.topics.length ? body.topics : ['general'],
       last_used_at: new Date().toISOString(),
