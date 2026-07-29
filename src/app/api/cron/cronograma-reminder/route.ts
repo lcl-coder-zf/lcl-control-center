@@ -44,8 +44,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, sent: 0, message: 'Sin entradas hoy' })
   }
 
-  let totalSent = 0
-  const resumen: string[] = []
+  // Agrupado por persona: un día puede tener varias actividades (medio día en
+  // un cliente y medio día en otro), y mandar un push por cada una llenaba el
+  // celular de avisos repetidos titulados "Tu agenda de hoy".
+  const porPersona = new Map<string, { nombre: string; items: string[] }>()
 
   for (const entry of entries) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,20 +58,29 @@ export async function GET(req: NextRequest) {
 
     const actividad = empresa?.name ?? entry.activity ?? 'Actividad programada'
     const horario = entry.start_time && entry.end_time
-      ? `${entry.start_time.slice(0, 5)} – ${entry.end_time.slice(0, 5)}`
-      : entry.session === 'medio_manana' ? 'Mañana'
-      : entry.session === 'medio_tarde' ? 'Tarde'
-      : 'Todo el día'
+      ? `${entry.start_time.slice(0, 5)}–${entry.end_time.slice(0, 5)}`
+      : entry.session === 'medio_manana' ? 'media jornada AM'
+      : entry.session === 'medio_tarde' ? 'media jornada PM'
+      : 'todo el día'
 
-    // Solo a la dueña de la agenda.
-    const { sent } = await sendPushToProfiles([perfil.id], {
+    const acc = porPersona.get(perfil.id) ?? { nombre: primerNombre(perfil.full_name), items: [] }
+    acc.items.push(`${actividad} (${horario})`)
+    porPersona.set(perfil.id, acc)
+  }
+
+  let totalSent = 0
+  const resumen: string[] = []
+
+  for (const [profileId, { nombre, items }] of porPersona) {
+    // Solo a la dueña de la agenda, con todo su día en un mismo aviso.
+    const { sent } = await sendPushToProfiles([profileId], {
       title: '📅 Tu agenda de hoy',
-      body: `${actividad} · ${horario}`,
+      body: items.join(' · '),
       url: '/cronograma',
-      tag: `cronograma-${entry.id}`,
+      tag: `cronograma-${weekStart}-${dayOfWeek}`,
     })
     totalSent += sent
-    resumen.push(`${primerNombre(perfil.full_name)}: ${actividad}`)
+    resumen.push(`${nombre}: ${items.join(', ')}`)
   }
 
   // Un único resumen del día para los admins.

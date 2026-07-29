@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, ListChecks, CalendarClock } from 'lucide-react'
 import TareasList from './TareasList'
+import FechasClave from './FechasClave'
 import { createClient } from '@/lib/supabase/client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 
@@ -17,12 +18,13 @@ export default function TareasPage() {
   const [prioridad, setPrioridad] = useState('todas')
   const [asignado, setAsignado] = useState('todas')
   const [tipo, setTipo] = useState('todas')
+  const [vista, setVista] = useState<'lista' | 'fechas'>('lista')
 
   const fetchTasks = useCallback(async () => {
     const supabase = createClient()
     const { data } = await supabase
       .from('tasks')
-      .select('*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name), task_assignees(profile_id, profiles(id, full_name))')
+      .select('*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name), task_assignees(profile_id, profiles(id, full_name)), task_companies(company_id, companies(id, name))')
       .order('due_date', { ascending: true })
     return data ?? []
   }, [])
@@ -79,7 +81,11 @@ export default function TareasPage() {
         <div>
           <p className="text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: '#40b5fa' }}>Módulo 03</p>
           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#1a2e3b' }}>Tareas</h1>
-          <p className="text-sm mt-1" style={{ color: '#6b8fa0' }}>{filtered.length} tarea{filtered.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm mt-1" style={{ color: '#6b8fa0' }}>
+            {vista === 'fechas'
+              ? 'Lo que viene, por mes y por cliente'
+              : `${filtered.length} tarea${filtered.length !== 1 ? 's' : ''}`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={refreshTasks} disabled={refreshing} title="Actualizar"
@@ -95,6 +101,32 @@ export default function TareasPage() {
         </div>
       </div>
 
+      {/* Vistas: la lista de siempre y el calendario de fechas clave */}
+      <div className="flex gap-2 mb-6">
+        {([
+          { id: 'lista',  label: 'Lista',        icon: ListChecks },
+          { id: 'fechas', label: 'Fechas clave', icon: CalendarClock },
+        ] as const).map(v => {
+          const on = vista === v.id
+          const Icon = v.icon
+          return (
+            <button key={v.id} onClick={() => setVista(v.id)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+              style={{
+                background: on ? 'rgba(64,181,250,0.12)' : '#f4f7fa',
+                color: on ? '#40b5fa' : '#6b8fa0',
+                border: `1px solid ${on ? 'rgba(64,181,250,0.35)' : 'rgba(0,40,80,0.08)'}`,
+              }}>
+              <Icon className="w-4 h-4" />{v.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {vista === 'fechas' ? (
+        <FechasClave tasks={mainTasks} />
+      ) : (
+      <>
       <div className="grid grid-cols-4 gap-3 mb-6">
         {[
           { label: 'Pendientes', value: counts.pendiente, color: '#40b5fa' },
@@ -176,6 +208,8 @@ export default function TareasPage() {
         companies={companies}
         onRefresh={refreshTasks}
       />
+      </>
+      )}
     </div>
   )
 }

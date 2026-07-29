@@ -6,7 +6,7 @@ import { pushNotify } from '@/lib/push-client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   ChevronLeft, ChevronRight, Plus, X, Loader2, Check, Clock,
-  CalendarRange, Pencil, RotateCcw,
+  CalendarRange, Pencil, RotateCcw, Trash2,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,10 +17,28 @@ const DAY_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie']
 
 const SESSIONS: Record<string, string> = {
   todo_el_dia:   'Todo el día',
-  medio_manana:  'Medio día (Mañana)',
-  medio_tarde:   'Medio día (Tarde)',
+  medio_manana:  'Medio día · mañana (AM)',
+  medio_tarde:   'Medio día · tarde (PM)',
   personalizado: 'Horario específico',
   no_aplica:     'No aplica',
+}
+
+// Etiqueta corta de la celda. Antes decía solo "Mañana", que se leía como
+// "el día de mañana" en vez de "la mañana de este día". ½ AM no se presta.
+function sessionBadge(entry: Row): string | null {
+  if (!entry?.session || entry.session === 'todo_el_dia') return null
+  if (entry.session === 'medio_manana') return '½ AM'
+  if (entry.session === 'medio_tarde')  return '½ PM'
+  if (entry.session === 'no_aplica')    return 'N/A'
+  if (entry.session === 'personalizado' && entry.start_time && entry.end_time) {
+    return `${entry.start_time.slice(0, 5)}–${entry.end_time.slice(0, 5)}`
+  }
+  return entry.session
+}
+
+// Orden dentro del día: primero lo explícito, luego mañana antes que tarde.
+const PESO_SESION: Record<string, number> = {
+  todo_el_dia: 0, medio_manana: 1, personalizado: 2, medio_tarde: 3, no_aplica: 4,
 }
 
 const STATUS_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -95,9 +113,17 @@ export default function CronogramaPage() {
     setWeekStart(getMonday(new Date()))
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function entryFor(profileId: string, dayIdx: number): any {
-    return entries.find(e => e.profile_id === profileId && e.day_of_week === dayIdx) ?? null
+  // Un día puede tener varias actividades: medio día en un cliente y medio
+  // día en otro. Se devuelven ordenadas para que la celda se lea de arriba
+  // (mañana) hacia abajo (tarde).
+  function entriesFor(profileId: string, dayIdx: number): Row[] {
+    return entries
+      .filter(e => e.profile_id === profileId && e.day_of_week === dayIdx)
+      .sort((a, b) => {
+        const porOrden = (a.orden ?? 0) - (b.orden ?? 0)
+        if (porOrden !== 0) return porOrden
+        return (PESO_SESION[a.session] ?? 9) - (PESO_SESION[b.session] ?? 9)
+      })
   }
 
   const consultants = profiles.filter(p => p.role === 'consultant' || p.role === 'admin')
@@ -217,18 +243,15 @@ export default function CronogramaPage() {
 
             {/* Day cells */}
             {DAYS.map((_, dayIdx) => {
-              const entry = entryFor(profile.id, dayIdx)
+              const dayEntries = entriesFor(profile.id, dayIdx)
               const dayKey = toKey(dayDates[dayIdx])
-              const isToday = dayKey === todayKey
-              const sc = STATUS_COLORS[entry?.status ?? 'programado']
 
               return (
                 <CronogramaCell
                   key={dayIdx}
-                  entry={entry}
-                  isToday={isToday}
+                  entries={dayEntries}
+                  isToday={dayKey === todayKey}
                   isLast={dayIdx === 4}
-                  sc={sc}
                   onClick={() => setEditCell({ profile, dayIdx })}
                 />
               )
@@ -256,26 +279,25 @@ export default function CronogramaPage() {
         ))}
       </div>
 
-      {/* Edit/Create modal */}
+      {/* Modal del día: lista de actividades + alta/edición */}
       {editCell && (
-        <EntradaModal
+        <DiaModal
           profile={editCell.profile}
           dayIdx={editCell.dayIdx}
           dayDate={dayDates[editCell.dayIdx]}
           weekStart={weekStart}
           companies={companies}
-          existing={entryFor(editCell.profile.id, editCell.dayIdx)}
+          entries={entriesFor(editCell.profile.id, editCell.dayIdx)}
           onClose={() => setEditCell(null)}
-          onSaved={() => { setEditCell(null); load(weekStart) }}
+          onReload={() => load(weekStart)}
         />
       )}
     </div>
   )
 }
 
-function CronogramaCell({ entry, isToday, isLast, sc, onClick }: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  entry: any; isToday: boolean; isLast: boolean; sc: typeof STATUS_COLORS[string]; onClick: () => void
+function CronogramaCell({ entries, isToday, isLast, onClick }: {
+  entries: Row[]; isToday: boolean; isLast: boolean; onClick: () => void
 }) {
   const [hov, setHov] = useState(false)
 
@@ -289,45 +311,46 @@ function CronogramaCell({ entry, isToday, isLast, sc, onClick }: {
         borderRight: !isLast ? '1px solid rgba(0,40,80,0.06)' : 'none',
         background: isToday ? 'rgba(64,181,250,0.03)' : 'transparent',
       }}>
-      {entry ? (
-        <div className="rounded-lg p-2 h-full transition-all"
-          style={{
-            background: hov ? 'rgba(64,181,250,0.08)' : sc.bg,
-            border: `1px solid ${hov ? 'rgba(64,181,250,0.3)' : sc.border}`,
-          }}>
-          {/* Activity/client */}
-          <p className="text-[11px] font-semibold leading-tight mb-1"
-            style={{
-              color: sc.text,
-              textDecoration: entry.status === 'no_aplica' ? 'line-through' : 'none',
-            }}>
-            {entry.companies?.name || entry.activity || '—'}
-          </p>
-          {entry.companies?.name && entry.activity && (
-            <p className="text-[10px] leading-tight mb-1" style={{ color: '#86a2b2' }}>{entry.activity}</p>
-          )}
-          {/* Session badge */}
-          {entry.session && entry.session !== 'todo_el_dia' && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded"
-              style={{ background: 'rgba(0,40,80,0.06)', color: '#6b8fa0', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-              <Clock className="w-2 h-2" />
-              {entry.session === 'medio_manana' ? 'Mañana'
-                : entry.session === 'medio_tarde' ? 'Tarde'
-                : entry.session === 'no_aplica' ? 'N/A'
-                : entry.session === 'personalizado' && entry.start_time && entry.end_time
-                  ? `${entry.start_time.slice(0,5)}–${entry.end_time.slice(0,5)}`
-                  : entry.session}
-            </span>
-          )}
-          {/* Status check */}
-          {entry.status === 'cumplido' && (
-            <div className="absolute top-2 right-2">
-              <Check className="w-3 h-3" style={{ color: '#4ade80' }} />
-            </div>
-          )}
+      {entries.length > 0 ? (
+        <div className="flex flex-col gap-1 h-full">
+          {entries.map(entry => {
+            const sc = STATUS_COLORS[entry.status ?? 'programado']
+            const badge = sessionBadge(entry)
+            return (
+              <div key={entry.id} className="rounded-lg px-2 py-1.5 transition-all"
+                style={{
+                  background: hov ? 'rgba(64,181,250,0.08)' : sc.bg,
+                  border: `1px solid ${hov ? 'rgba(64,181,250,0.3)' : sc.border}`,
+                }}>
+                <div className="flex items-start gap-1">
+                  <p className="text-[11px] font-semibold leading-tight flex-1 min-w-0"
+                    style={{
+                      color: sc.text,
+                      textDecoration: entry.status === 'no_aplica' ? 'line-through' : 'none',
+                    }}>
+                    {entry.companies?.name || entry.activity || '—'}
+                  </p>
+                  {entry.status === 'cumplido' && (
+                    <Check className="w-3 h-3 flex-shrink-0" style={{ color: '#4ade80' }} />
+                  )}
+                </div>
+                {entry.companies?.name && entry.activity && (
+                  <p className="text-[10px] leading-tight" style={{ color: '#86a2b2' }}>{entry.activity}</p>
+                )}
+                {badge && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded mt-1"
+                    style={{ background: 'rgba(0,40,80,0.06)', color: '#6b8fa0', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                    <Clock className="w-2 h-2" />{badge}
+                  </span>
+                )}
+              </div>
+            )
+          })}
           {hov && (
-            <div className="absolute top-2 right-2">
-              <Pencil className="w-3 h-3" style={{ color: '#40b5fa', opacity: 0.7 }} />
+            <div className="flex items-center justify-center gap-1 rounded-lg py-1"
+              style={{ background: 'rgba(64,181,250,0.08)', color: '#40b5fa' }}>
+              <Plus className="w-3 h-3" />
+              <span className="text-[9px] font-semibold">Agregar</span>
             </div>
           )}
         </div>
@@ -345,17 +368,145 @@ function CronogramaCell({ entry, isToday, isLast, sc, onClick }: {
   )
 }
 
-function EntradaModal({
-  profile, dayIdx, dayDate, weekStart, companies, existing, onClose, onSaved,
+// Modal del día: lista lo que ya hay y deja agregar más actividades, que es
+// lo que faltaba cuando alguien atiende dos clientes el mismo día.
+function DiaModal({
+  profile, dayIdx, dayDate, weekStart, companies, entries, onClose, onReload,
 }: {
   profile: Row
   dayIdx: number
   dayDate: Date
   weekStart: Date
   companies: Row[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  existing: any
+  entries: Row[]
   onClose: () => void
+  onReload: () => void
+}) {
+  // null = no hay formulario abierto · 'nueva' = alta · Row = edición
+  const [editando, setEditando] = useState<Row | 'nueva' | null>(entries.length === 0 ? 'nueva' : null)
+  const [borrando, setBorrando] = useState<string | null>(null)
+
+  const dayLabel = DAYS[dayIdx]
+  const dateLabel = dayDate.toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })
+
+  async function borrar(entry: Row) {
+    if (!confirm('¿Eliminar esta actividad?')) return
+    setBorrando(entry.id)
+    const supabase = createClient()
+    await supabase.from('schedule_entries').delete().eq('id', entry.id)
+    setBorrando(null)
+    onReload()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white w-full lg:max-w-md rounded-t-2xl lg:rounded-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between px-5 py-4 border-b sticky top-0 bg-white z-10" style={{ borderColor: '#e2e8f5' }}>
+          <div>
+            <h2 className="font-bold text-sm" style={{ color: '#1a2e3b' }}>{dayLabel} {dateLabel}</h2>
+            <p className="text-xs mt-0.5" style={{ color: '#6b8fa0' }}>
+              {profile.full_name}
+              {entries.length > 0 && ` · ${entries.length} actividad${entries.length > 1 ? 'es' : ''}`}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Lista de actividades del día */}
+        {entries.length > 0 && (
+          <div className="px-5 pt-4 space-y-2">
+            {entries.map(entry => {
+              const sc = STATUS_COLORS[entry.status ?? 'programado']
+              const badge = sessionBadge(entry)
+              const enEdicion = typeof editando === 'object' && editando?.id === entry.id
+              return (
+                <div key={entry.id} className="rounded-xl px-3 py-2.5 flex items-center gap-3"
+                  style={{ background: enEdicion ? 'rgba(64,181,250,0.06)' : sc.bg, border: `1px solid ${enEdicion ? 'rgba(64,181,250,0.35)' : sc.border}` }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate" style={{ color: sc.text }}>
+                      {entry.companies?.name || entry.activity || '—'}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {badge && (
+                        <span className="text-[10px] flex items-center gap-1" style={{ color: '#6b8fa0' }}>
+                          <Clock className="w-2.5 h-2.5" />{badge}
+                        </span>
+                      )}
+                      {entry.companies?.name && entry.activity && (
+                        <span className="text-[10px] truncate" style={{ color: '#86a2b2' }}>{entry.activity}</span>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => setEditando(enEdicion ? null : entry)} title="Editar"
+                    className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#fff', color: '#40b5fa' }}>
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => borrar(entry)} disabled={borrando === entry.id} title="Eliminar"
+                    className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#fff', color: '#ff6b6b' }}>
+                    {borrando === entry.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Trash2 className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              )
+            })}
+
+            {editando === null && (
+              <button onClick={() => setEditando('nueva')}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold"
+                style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa', border: '1px dashed rgba(64,181,250,0.4)' }}>
+                <Plus className="w-3.5 h-3.5" />Agregar otra actividad
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Formulario de alta / edición */}
+        {editando !== null && (
+          <EntradaForm
+            key={editando === 'nueva' ? 'nueva' : editando.id}
+            profile={profile}
+            dayIdx={dayIdx}
+            dayLabel={dayLabel}
+            dateLabel={dateLabel}
+            weekStart={weekStart}
+            companies={companies}
+            existing={editando === 'nueva' ? null : editando}
+            orden={entries.length}
+            onCancel={() => (entries.length === 0 ? onClose() : setEditando(null))}
+            onSaved={() => { setEditando(null); onReload() }}
+          />
+        )}
+
+        {entries.length === 0 && editando === null && (
+          <div className="px-5 py-8 text-center">
+            <p className="text-sm mb-3" style={{ color: '#86a2b2' }}>Sin actividades este día.</p>
+            <button onClick={() => setEditando('nueva')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold"
+              style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa', border: '1px dashed rgba(64,181,250,0.4)' }}>
+              <Plus className="w-3.5 h-3.5" />Agregar actividad
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EntradaForm({
+  profile, dayIdx, dayLabel, dateLabel, weekStart, companies, existing, orden, onCancel, onSaved,
+}: {
+  profile: Row
+  dayIdx: number
+  dayLabel: string
+  dateLabel: string
+  weekStart: Date
+  companies: Row[]
+  existing: Row | null
+  orden: number
+  onCancel: () => void
   onSaved: () => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -374,9 +525,6 @@ function EntradaModal({
   useEffect(() => {
     if (activityType === 'libre') inputRef.current?.focus()
   }, [activityType])
-
-  const dayLabel = DAYS[dayIdx]
-  const dateLabel = dayDate.toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })
 
   async function save() {
     if (activityType === 'cliente' && !companyId) { alert('Selecciona un cliente'); return }
@@ -401,6 +549,7 @@ function EntradaModal({
       end_time:   session === 'personalizado' ? endTime   : null,
       notas: notas.trim() || null,
       status,
+      orden: existing?.orden ?? orden,
     }
 
     if (existing) {
@@ -424,14 +573,6 @@ function EntradaModal({
     onSaved()
   }
 
-  async function deleteEntry() {
-    if (!existing) return
-    if (!confirm('¿Eliminar esta entrada?')) return
-    const supabase = createClient()
-    await supabase.from('schedule_entries').delete().eq('id', existing.id)
-    onSaved()
-  }
-
   const INP: React.CSSProperties = {
     background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)',
     color: '#1a2e3b', borderRadius: 12, padding: '10px 14px',
@@ -439,18 +580,11 @@ function EntradaModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-0 lg:p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white w-full lg:max-w-md rounded-t-2xl lg:rounded-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between px-5 py-4 border-b sticky top-0 bg-white z-10" style={{ borderColor: '#e2e8f5' }}>
-          <div>
-            <h2 className="font-bold text-sm" style={{ color: '#1a2e3b' }}>
-              {dayLabel} {dateLabel}
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: '#6b8fa0' }}>{profile.full_name}</p>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
-            <X size={14} />
-          </button>
+    <div>
+        <div className="px-5 pt-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#40b5fa' }}>
+            {existing ? 'Editar actividad' : 'Nueva actividad'}
+          </p>
         </div>
 
         <div className="p-5 space-y-4">
@@ -567,14 +701,7 @@ function EntradaModal({
         </div>
 
         <div className="flex gap-2 px-5 pb-5">
-          {existing && (
-            <button onClick={deleteEntry}
-              className="px-3 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1"
-              style={{ background: 'rgba(255,107,107,0.08)', color: '#ff6b6b' }}>
-              Borrar
-            </button>
-          )}
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border text-sm" style={{ borderColor: '#e2e8f5', color: '#6b7a9e' }}>
+          <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border text-sm" style={{ borderColor: '#e2e8f5', color: '#6b7a9e' }}>
             Cancelar
           </button>
           <button onClick={save} disabled={saving}
@@ -583,7 +710,6 @@ function EntradaModal({
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : existing ? 'Guardar' : 'Agregar'}
           </button>
         </div>
-      </div>
     </div>
   )
 }

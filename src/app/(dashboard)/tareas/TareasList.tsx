@@ -3,12 +3,15 @@
 import { useState } from 'react'
 import {
   CheckSquare, Clock, AlertTriangle, Check, Loader2, RefreshCw,
-  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil,
+  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil, Building2, BellRing,
 } from 'lucide-react'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { pushNotify } from '@/lib/push-client'
-import { regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence } from '@/lib/tasks'
+import {
+  regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence,
+  AVISO_OPCIONES, avisoLabel, taskCompanyNames, taskCompanyIds,
+} from '@/lib/tasks'
 
 function ProgressRing({ done, total }: { done: number; total: number }) {
   const pct    = total === 0 ? 0 : Math.round((done / total) * 100)
@@ -68,9 +71,10 @@ export default function TareasList({
       await supabase.from('tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', task.id)
       await regenerateIfRecurring(supabase, task)
       // Push a admins cuando se completa una tarea
+      const clientes = taskCompanyNames(task).join(' · ')
       await pushNotify(supabase, {
         title: '✅ Tarea completada',
-        body: `"${task.title}"${task.companies?.name ? ' · ' + task.companies.name : ''}`,
+        body: `"${task.title}"${clientes ? ' · ' + clientes : ''}`,
         url: '/tareas',
         toAdmins: true,
       })
@@ -174,6 +178,7 @@ export default function TareasList({
           const doneSubs = subtasks.filter(s => s.status === 'completada').length
           const isOpen = expanded.has(t.id)
           const assigneeNames = getAssigneeNames(t)
+          const clientNames = taskCompanyNames(t)
 
           return (
             <div key={t.id} className="rounded-2xl transition-all"
@@ -220,8 +225,19 @@ export default function TareasList({
                         <RefreshCw className="w-3 h-3" />{RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Recurrente'}
                       </span>
                     )}
-                    {t.companies?.name && (
-                      <span className="text-xs" style={{ color: '#6b8fa0' }}>{t.companies.name}</span>
+                    {clientNames.length === 1 && (
+                      <span className="text-xs" style={{ color: '#6b8fa0' }}>{clientNames[0]}</span>
+                    )}
+                    {clientNames.length > 1 && (
+                      <span className="text-xs flex items-center gap-1" style={{ color: '#6b8fa0' }}>
+                        <Building2 className="w-3 h-3" />
+                        {clientNames.length} clientes
+                      </span>
+                    )}
+                    {t.aviso_dias_antes > 0 && (
+                      <span className="text-xs flex items-center gap-1" style={{ color: '#a78bfa' }}>
+                        <BellRing className="w-3 h-3" />{avisoLabel(t.aviso_dias_antes)}
+                      </span>
                     )}
                     {assigneeNames.length > 0 && (
                       <span className="text-xs" style={{ color: '#6b8fa0' }}>
@@ -268,6 +284,23 @@ export default function TareasList({
                       ? <p className="text-sm whitespace-pre-wrap" style={{ color: '#4a5a6b' }}>{t.description}</p>
                       : <p className="text-sm italic" style={{ color: '#b0bcc7' }}>Sin descripción</p>}
                   </div>
+
+                  {/* Clientes de la tarea (una sola tarea puede servir a varios) */}
+                  {clientNames.length > 1 && (
+                    <div className="ml-11 mb-3">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#86a2b2' }}>
+                        Clientes · se completa una vez para todos
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {clientNames.map(name => (
+                          <span key={name} className="text-xs px-2.5 py-1 rounded-lg flex items-center gap-1"
+                            style={{ background: 'rgba(52,211,153,0.08)', color: '#059669', border: '1px solid rgba(52,211,153,0.2)' }}>
+                            <Building2 className="w-3 h-3" />{name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Co-asignados expandidos */}
                   {assigneeNames.length > 1 && (
@@ -382,9 +415,10 @@ function EditTareaModal({
   const [description, setDescription] = useState(task.description ?? '')
   const [priority, setPriority] = useState(task.priority ?? 'media')
   const [dueDate, setDueDate] = useState(task.due_date ?? '')
-  const [companyId, setCompanyId] = useState(task.company_id ?? '')
+  const [companyIds, setCompanyIds] = useState<Set<string>>(() => new Set(taskCompanyIds(task)))
   const [taskType, setTaskType] = useState(task.task_type ?? 'esporadica')
   const [recurrence, setRecurrence] = useState(task.recurrence ?? 'mensual')
+  const [aviso, setAviso] = useState(String(task.aviso_dias_antes ?? 0))
 
   // Asignados actuales: toma de task_assignees si existe, si no del assigned_to
   const initialAssigned = (): Set<string> => {
@@ -404,23 +438,33 @@ function EditTareaModal({
     })
   }
 
+  function toggleCompany(id: string) {
+    setCompanyIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
   async function save() {
     if (!title.trim() || !dueDate) return
     if (assignedIds.size === 0) { alert('Asigna la tarea a alguien'); return }
     setSaving(true)
     const supabase = createClient()
     const assignedArr = [...assignedIds]
+    const companyArr  = [...companyIds]
 
     await supabase.from('tasks').update({
       title,
       description: description || null,
       priority,
       due_date: dueDate,
-      company_id: companyId || null,
+      company_id: companyArr[0] ?? null,
       assigned_to: assignedArr[0],
       task_type: taskType,
       recurrence: taskType === 'recurrente' ? recurrence : null,
       recurrence_active: taskType === 'recurrente',
+      aviso_dias_antes: Number(aviso) || null,
     }).eq('id', task.id)
 
     // Reemplazar asignados
@@ -428,6 +472,14 @@ function EditTareaModal({
     await supabase.from('task_assignees').insert(
       assignedArr.map(pid => ({ task_id: task.id, profile_id: pid }))
     )
+
+    // Reemplazar clientes
+    await supabase.from('task_companies').delete().eq('task_id', task.id)
+    if (companyArr.length > 0) {
+      await supabase.from('task_companies').insert(
+        companyArr.map(cid => ({ task_id: task.id, company_id: cid }))
+      )
+    }
 
     setSaving(false)
     onSaved()
@@ -502,13 +554,42 @@ function EditTareaModal({
             </div>
           )}
 
-          {/* Cliente */}
+          {/* Aviso anticipado */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>Cliente</label>
-            <select value={companyId} onChange={e => setCompanyId(e.target.value)} style={INP}>
-              <option value="">LCL (interno)</option>
-              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>Avisar con anticipación</label>
+            <select value={aviso} onChange={e => setAviso(e.target.value)} style={INP}>
+              {AVISO_OPCIONES.map(o => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
             </select>
+          </div>
+
+          {/* Clientes (varios: una sola tarea compartida) */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#6b8fa0' }}>
+              Clientes {companyIds.size > 1 && <span style={{ color: '#40b5fa' }}>({companyIds.size})</span>}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {companies.map(c => {
+                const on = companyIds.has(c.id)
+                return (
+                  <button key={c.id} type="button" onClick={() => toggleCompany(c.id)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left"
+                    style={{
+                      background: on ? 'rgba(64,181,250,0.10)' : '#f4f7fa',
+                      color: on ? '#40b5fa' : '#6b8fa0',
+                      border: `1px solid ${on ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}`,
+                    }}>
+                    <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ background: on ? '#40b5fa' : '#fff', border: `1.5px solid ${on ? '#40b5fa' : 'rgba(0,40,80,0.15)'}` }}>
+                      {on && <span className="text-white text-[9px]">✓</span>}
+                    </span>
+                    <span className="truncate">{c.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {companyIds.size === 0 && (
+              <p className="text-[11px] mt-2" style={{ color: '#86a2b2' }}>Sin cliente: tarea interna de LCL.</p>
+            )}
           </div>
 
           {/* Asignados */}

@@ -5,7 +5,10 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { daysUntil, formatDate } from '@/lib/utils'
 import { ROLE_LABELS } from '@/types'
-import { RECURRENCE_CONFIG, regenerateIfRecurring, type Recurrence } from '@/lib/tasks'
+import {
+  RECURRENCE_CONFIG, regenerateIfRecurring, type Recurrence,
+  taskCompanyIds, taskCompanyNames,
+} from '@/lib/tasks'
 import {
   Building2, AlertTriangle, CalendarClock,
   Users, CheckCircle2, CheckSquare, Circle,
@@ -21,7 +24,7 @@ const PRIORITY = {
   critica: { color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)', label: 'Crítica' },
 }
 
-const TASK_SELECT = '*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name)'
+const TASK_SELECT = '*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name), task_companies(company_id, companies(id, name))'
 
 export default function DashboardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,9 +74,10 @@ export default function DashboardPage() {
   const semana = active.filter((t: any) => { const d = daysUntil(t.due_date); return d > 0 && d <= 7 })
 
   // Tareas por cliente = ranking por carga de tareas activas (pendientes).
+  // Una tarea compartida entre varios clientes suma en cada uno de ellos.
   const clientesCarga = data.clientes.map((c: { id: string; name: string }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ts = active.filter((t: any) => t.company_id === c.id)
+    const ts = active.filter((t: any) => taskCompanyIds(t).includes(c.id))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const overdue = ts.filter((t: any) => daysUntil(t.due_date) < 0).length
     return { id: c.id, name: c.name, count: ts.length, overdue }
@@ -181,7 +185,11 @@ export default function DashboardPage() {
                             <RefreshCw className="w-2.5 h-2.5" />{RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Rec'}
                           </span>
                         )}
-                        {t.companies?.name && <span className="text-[11px]" style={{ color: '#6b8fa0' }}>{t.companies.name}</span>}
+                        {taskCompanyNames(t).length > 0 && (
+                          <span className="text-[11px]" style={{ color: '#6b8fa0' }}>
+                            {taskCompanyNames(t).join(' · ')}
+                          </span>
+                        )}
                         {t.profiles?.full_name && <span className="text-[11px]" style={{ color: '#86a2b2' }}>→ {t.profiles.full_name}</span>}
                       </div>
                     </Link>

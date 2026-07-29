@@ -37,10 +37,26 @@ export default function ClienteTareas({ companyId, companyName, initialTasks, pr
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
 
   // Cargar tareas frescas en el navegador (evita cualquier caché del servidor).
+  // Una tarea le puede pertenecer a este cliente por `company_id` (el principal)
+  // o por `task_companies`, cuando es una tarea compartida con otros clientes.
   useEffect(() => {
     const supabase = createClient()
-    supabase.from('tasks').select('*, profiles!tasks_assigned_to_fkey(id, full_name)').eq('company_id', companyId).order('due_date', { ascending: true })
-      .then(({ data }) => { if (data) setTasks(data) })
+    const SELECT = '*, profiles!tasks_assigned_to_fkey(id, full_name)'
+    ;(async () => {
+      const { data: links } = await supabase
+        .from('task_companies').select('task_id').eq('company_id', companyId)
+      const ids = [...new Set((links ?? []).map((l: { task_id: string }) => l.task_id))]
+
+      const { data } = ids.length
+        ? await supabase.from('tasks').select(SELECT)
+            .or(`company_id.eq.${companyId},id.in.(${ids.join(',')})`)
+            .order('due_date', { ascending: true })
+        : await supabase.from('tasks').select(SELECT)
+            .eq('company_id', companyId)
+            .order('due_date', { ascending: true })
+
+      if (data) setTasks(data)
+    })()
   }, [companyId])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +91,9 @@ export default function ClienteTareas({ companyId, companyName, initialTasks, pr
       created_by: userId,
     }]).select('*, profiles!tasks_assigned_to_fkey(id, full_name)').single()
     if (data) {
+      // Espejo en task_companies para que la tarea quede en la lista del cliente
+      // aunque después le agreguen más clientes desde el módulo Tareas.
+      await supabase.from('task_companies').insert([{ task_id: data.id, company_id: companyId }])
       setTasks(prev => [...prev, data])
       // Notificar al responsable + admins (Laura y Daniel reciben todo).
       const admins = await adminIds(supabase)

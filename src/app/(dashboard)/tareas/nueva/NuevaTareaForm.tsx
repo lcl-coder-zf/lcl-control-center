@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
-import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS } from '@/lib/tasks'
+import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS, AVISO_OPCIONES } from '@/lib/tasks'
 import { notify, adminIds } from '@/lib/notify'
 import { pushNotify } from '@/lib/push-client'
 
@@ -23,15 +23,18 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
   const [assignedIds, setAssignedIds] = useState<Set<string>>(
     new Set(currentUserId ? [currentUserId] : [])
   )
+  const [companyIds, setCompanyIds] = useState<Set<string>>(
+    new Set(defaultClienteId ? [defaultClienteId] : [])
+  )
   const [form, setForm] = useState({
     title: '',
     description: '',
-    company_id: defaultClienteId ?? '',
     priority: 'media',
     status: 'pendiente',
     due_date: '',
     task_type: 'esporadica',
     recurrence: 'mensual',
+    aviso_dias_antes: '0',
   })
 
   function set(field: string, value: string) {
@@ -40,6 +43,14 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
 
   function toggleAssignee(id: string) {
     setAssignedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleCompany(id: string) {
+    setCompanyIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
       return next
@@ -57,11 +68,13 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     const assignedArr = [...assignedIds]
+    const companyArr  = [...companyIds]
 
     const { data: task, error: insertErr } = await supabase.from('tasks').insert([{
       title: form.title,
       description: form.description || null,
-      company_id: form.company_id || null,
+      // El primero queda como cliente principal; la lista completa va en task_companies.
+      company_id: companyArr[0] ?? null,
       assigned_to: assignedArr[0],
       priority: form.priority,
       status: form.status,
@@ -69,6 +82,7 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
       task_type: form.task_type,
       recurrence: form.task_type === 'recurrente' ? form.recurrence : null,
       recurrence_active: form.task_type === 'recurrente',
+      aviso_dias_antes: Number(form.aviso_dias_antes) || null,
       created_by: user?.id,
     }]).select().single()
 
@@ -81,7 +95,17 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
       )
     }
 
-    const cliente = companies.find(c => c.id === form.company_id)?.name
+    // Una sola tarea para varios clientes: se completa una vez para todos.
+    if (task && companyArr.length > 0) {
+      await supabase.from('task_companies').insert(
+        companyArr.map(cid => ({ task_id: task.id, company_id: cid }))
+      )
+    }
+
+    const cliente = companyArr
+      .map(id => companies.find(c => c.id === id)?.name)
+      .filter(Boolean)
+      .join(' · ')
     const admins = await adminIds(supabase)
     const msg = `Nueva tarea: "${form.title}"${cliente ? ' · ' + cliente : ''}`
     await notify(supabase, {
@@ -167,6 +191,13 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
               ))}
             </Sel>
           )}
+
+          {/* Aviso anticipado: para obligaciones cuya documentación se pide semanas antes */}
+          <Sel label="Avisar con anticipación" value={form.aviso_dias_antes} onChange={v => set('aviso_dias_antes', v)}>
+            {AVISO_OPCIONES.map(o => (
+              <option key={o.value} value={String(o.value)}>{o.label}</option>
+            ))}
+          </Sel>
         </Card>
 
         {/* Asignación */}
@@ -198,10 +229,37 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
             </div>
           </div>
 
-          <Sel label="Cliente" value={form.company_id} onChange={v => set('company_id', v)}>
-            <option value="">LCL (interno)</option>
-            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Sel>
+          {/* Multi-select de clientes: una misma tarea puede servirle a varios */}
+          <div>
+            <label className="block text-xs font-semibold tracking-wide uppercase mb-2" style={{ color: '#6b8fa0' }}>
+              Clientes {companyIds.size > 1 && <span style={{ color: '#40b5fa' }}>({companyIds.size} clientes · una sola tarea)</span>}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {companies.map(c => {
+                const on = companyIds.has(c.id)
+                return (
+                  <button key={c.id} type="button" onClick={() => toggleCompany(c.id)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left"
+                    style={{
+                      background: on ? 'rgba(64,181,250,0.10)' : '#f4f7fa',
+                      color: on ? '#40b5fa' : '#6b8fa0',
+                      border: `1px solid ${on ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.10)'}`,
+                    }}>
+                    <span className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                      style={{ background: on ? '#40b5fa' : '#fff', border: `1.5px solid ${on ? '#40b5fa' : 'rgba(0,40,80,0.15)'}` }}>
+                      {on && <span className="text-white text-[9px]">✓</span>}
+                    </span>
+                    <span className="truncate">{c.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[11px] mt-2" style={{ color: '#86a2b2' }}>
+              {companyIds.size === 0
+                ? 'Sin cliente seleccionado: la tarea queda como interna de LCL.'
+                : 'Se crea una sola tarea. Al completarla queda lista para todos los clientes marcados.'}
+            </p>
+          </div>
         </Card>
 
         {/* Preview */}
