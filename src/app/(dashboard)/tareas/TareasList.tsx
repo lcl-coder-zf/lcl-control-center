@@ -11,6 +11,7 @@ import { pushNotify } from '@/lib/push-client'
 import {
   regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence,
   AVISO_OPCIONES, avisoLabel, taskCompanyNames, taskCompanyIds,
+  WEEKDAYS, firstWeeklyDate, weekdaysLabel,
 } from '@/lib/tasks'
 
 function ProgressRing({ done, total }: { done: number; total: number }) {
@@ -222,7 +223,10 @@ export default function TareasList({
                     {t.task_type === 'recurrente' && t.recurrence && (
                       <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
                         style={{ background: 'rgba(52,211,153,0.10)', color: '#059669' }}>
-                        <RefreshCw className="w-3 h-3" />{RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Recurrente'}
+                        <RefreshCw className="w-3 h-3" />
+                        {t.recurrence === 'semanal' && weekdaysLabel(t.recurrence_days)
+                          ? weekdaysLabel(t.recurrence_days)
+                          : RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Recurrente'}
                       </span>
                     )}
                     {clientNames.length === 1 && (
@@ -418,7 +422,17 @@ function EditTareaModal({
   const [companyIds, setCompanyIds] = useState<Set<string>>(() => new Set(taskCompanyIds(task)))
   const [taskType, setTaskType] = useState(task.task_type ?? 'esporadica')
   const [recurrence, setRecurrence] = useState(task.recurrence ?? 'mensual')
+  const [weekdays, setWeekdays] = useState<Set<number>>(() => new Set<number>(task.recurrence_days ?? []))
   const [aviso, setAviso] = useState(String(task.aviso_dias_antes ?? 0))
+  const usaDiasSemana = taskType === 'recurrente' && recurrence === 'semanal'
+
+  function toggleWeekday(n: number) {
+    setWeekdays(prev => {
+      const next = new Set(prev)
+      if (next.has(n)) next.delete(n); else next.add(n)
+      return next
+    })
+  }
 
   // Asignados actuales: toma de task_assignees si existe, si no del assigned_to
   const initialAssigned = (): Set<string> => {
@@ -454,15 +468,21 @@ function EditTareaModal({
     const assignedArr = [...assignedIds]
     const companyArr  = [...companyIds]
 
+    const recurrenceDays = usaDiasSemana && weekdays.size > 0
+      ? [...weekdays].sort((a, b) => a - b)
+      : null
+    const nuevaFecha = recurrenceDays ? firstWeeklyDate(dueDate, recurrenceDays) : dueDate
+
     await supabase.from('tasks').update({
       title,
       description: description || null,
       priority,
-      due_date: dueDate,
+      due_date: nuevaFecha,
       company_id: companyArr[0] ?? null,
       assigned_to: assignedArr[0],
       task_type: taskType,
       recurrence: taskType === 'recurrente' ? recurrence : null,
+      recurrence_days: recurrenceDays,
       recurrence_active: taskType === 'recurrente',
       aviso_dias_antes: Number(aviso) || null,
     }).eq('id', task.id)
@@ -551,6 +571,35 @@ function EditTareaModal({
               <select value={recurrence} onChange={e => setRecurrence(e.target.value)} style={INP}>
                 {RECURRENCE_OPTIONS.map(r => <option key={r} value={r}>{RECURRENCE_CONFIG[r].label}</option>)}
               </select>
+            </div>
+          )}
+
+          {usaDiasSemana && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>
+                Días de la semana {weekdays.size > 0 && <span style={{ color: '#40b5fa' }}>({weekdays.size})</span>}
+              </label>
+              <div className="flex gap-1.5">
+                {WEEKDAYS.map(w => {
+                  const on = weekdays.has(w.n)
+                  return (
+                    <button key={w.n} type="button" onClick={() => toggleWeekday(w.n)} title={w.label}
+                      className="w-9 h-9 rounded-xl text-sm font-bold transition-all"
+                      style={{
+                        background: on ? 'rgba(64,181,250,0.12)' : '#f4f7fa',
+                        color: on ? '#40b5fa' : '#6b8fa0',
+                        border: `1px solid ${on ? 'rgba(64,181,250,0.45)' : 'rgba(0,40,80,0.10)'}`,
+                      }}>
+                      {w.short}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: '#86a2b2' }}>
+                {weekdays.size === 0
+                  ? 'Sin días marcados: se repite cada 7 días desde la fecha.'
+                  : 'Se regenera solo en los días marcados. La fecha se ajusta al próximo día elegido.'}
+              </p>
             </div>
           )}
 

@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
     const adminsAvisar = adminIds.filter(id => !responsables.includes(id))
     if (adminsAvisar.length) {
       const { sent } = await sendPushToProfiles(adminsAvisar, {
-        title: esAviso ? '🗓️ Fecha clave próxima' : '⚠️ Tarea vencida',
+        title: esAviso ? '🗓️ Fecha clave próxima' : dias === 0 ? '📋 Tarea para hoy' : '⚠️ Tarea vencida',
         body: `"${t.title}"${sufijoCliente} de ${t.profiles?.full_name ?? 'un consultor'} — ${label}`,
         url: '/tareas',
         tag: `${esAviso ? 'aviso' : 'vencida'}-admin-${t.id}`,

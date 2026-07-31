@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
-import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS, AVISO_OPCIONES } from '@/lib/tasks'
+import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS, AVISO_OPCIONES, WEEKDAYS, firstWeeklyDate } from '@/lib/tasks'
 import { notify, adminIds } from '@/lib/notify'
 import { pushNotify } from '@/lib/push-client'
 
@@ -26,6 +26,7 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
   const [companyIds, setCompanyIds] = useState<Set<string>>(
     new Set(defaultClienteId ? [defaultClienteId] : [])
   )
+  const [weekdays, setWeekdays] = useState<Set<number>>(new Set())
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -57,6 +58,16 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     })
   }
 
+  function toggleWeekday(n: number) {
+    setWeekdays(prev => {
+      const next = new Set(prev)
+      if (next.has(n)) next.delete(n); else next.add(n)
+      return next
+    })
+  }
+
+  const usaDiasSemana = form.task_type === 'recurrente' && form.recurrence === 'semanal'
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.title.trim()) { setError('El título es obligatorio'); return }
@@ -70,6 +81,13 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     const assignedArr = [...assignedIds]
     const companyArr  = [...companyIds]
 
+    // Semanal por días específicos: guarda los días y arranca la primera fecha
+    // en el próximo día elegido (para que no empiece en un día fuera de patrón).
+    const recurrenceDays = usaDiasSemana && weekdays.size > 0
+      ? [...weekdays].sort((a, b) => a - b)
+      : null
+    const dueDate = recurrenceDays ? firstWeeklyDate(form.due_date, recurrenceDays) : form.due_date
+
     const { data: task, error: insertErr } = await supabase.from('tasks').insert([{
       title: form.title,
       description: form.description || null,
@@ -78,9 +96,10 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
       assigned_to: assignedArr[0],
       priority: form.priority,
       status: form.status,
-      due_date: form.due_date,
+      due_date: dueDate,
       task_type: form.task_type,
       recurrence: form.task_type === 'recurrente' ? form.recurrence : null,
+      recurrence_days: recurrenceDays,
       recurrence_active: form.task_type === 'recurrente',
       aviso_dias_antes: Number(form.aviso_dias_antes) || null,
       created_by: user?.id,
@@ -190,6 +209,36 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
                 <option key={r} value={r}>{RECURRENCE_CONFIG[r].label}</option>
               ))}
             </Sel>
+          )}
+
+          {/* Días específicos para recurrencia semanal (ej. solo martes y jueves) */}
+          {usaDiasSemana && (
+            <div>
+              <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>
+                Días de la semana {weekdays.size > 0 && <span style={{ color: '#40b5fa' }}>({weekdays.size})</span>}
+              </label>
+              <div className="flex gap-1.5">
+                {WEEKDAYS.map(w => {
+                  const on = weekdays.has(w.n)
+                  return (
+                    <button key={w.n} type="button" onClick={() => toggleWeekday(w.n)} title={w.label}
+                      className="w-9 h-9 rounded-xl text-sm font-bold transition-all"
+                      style={{
+                        background: on ? 'rgba(64,181,250,0.12)' : '#f4f7fa',
+                        color: on ? '#40b5fa' : '#6b8fa0',
+                        border: `1px solid ${on ? 'rgba(64,181,250,0.45)' : 'rgba(0,40,80,0.10)'}`,
+                      }}>
+                      {w.short}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: '#86a2b2' }}>
+                {weekdays.size === 0
+                  ? 'Sin días marcados: se repite cada 7 días desde la fecha.'
+                  : 'La tarea se regenera solo en los días marcados. La primera fecha se ajusta al próximo día elegido.'}
+              </p>
+            </div>
           )}
 
           {/* Aviso anticipado: para obligaciones cuya documentación se pide semanas antes */}

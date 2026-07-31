@@ -21,6 +21,37 @@ export const RECURRENCE_CONFIG: Record<Recurrence, { label: string; short: strin
 
 export const RECURRENCE_OPTIONS = Object.keys(RECURRENCE_CONFIG) as Recurrence[]
 
+// ── Días de la semana (para recurrencia 'semanal' con días específicos) ────────
+// Se guardan como números de JS `getDay()`: 0=Domingo … 6=Sábado.
+// Se muestran arrancando en Lunes, que es como piensa el equipo la semana laboral.
+export const WEEKDAYS: { n: number; short: string; label: string }[] = [
+  { n: 1, short: 'L',  label: 'Lunes' },
+  { n: 2, short: 'M',  label: 'Martes' },
+  { n: 3, short: 'X',  label: 'Miércoles' },
+  { n: 4, short: 'J',  label: 'Jueves' },
+  { n: 5, short: 'V',  label: 'Viernes' },
+  { n: 6, short: 'S',  label: 'Sábado' },
+  { n: 0, short: 'D',  label: 'Domingo' },
+]
+
+// "Mar, Jue" a partir de [2,4]. Ordena según WEEKDAYS (Lunes primero).
+export function weekdaysLabel(days?: number[] | null): string {
+  if (!days || days.length === 0) return ''
+  return WEEKDAYS.filter(w => days.includes(w.n)).map(w => w.label.slice(0, 3)).join(', ')
+}
+
+// Primera fecha ≥ `fromDate` (YYYY-MM-DD) que caiga en alguno de los días elegidos.
+// Si no hay días elegidos, devuelve la misma fecha.
+export function firstWeeklyDate(fromDate: string, days?: number[] | null): string {
+  if (!days || days.length === 0) return fromDate
+  const d = parseLocal(fromDate)
+  for (let i = 0; i < 7; i++) {
+    if (days.includes(d.getDay())) return fmt(d)
+    d.setDate(d.getDate() + 1)
+  }
+  return fromDate
+}
+
 // Anticipación del aviso. La documentación de algunas obligaciones se empieza
 // a pedir semanas antes de la fecha, así que avisar el mismo día no sirve.
 export const AVISO_OPCIONES: { value: number; label: string; short: string }[] = [
@@ -71,7 +102,17 @@ function fmt(d: Date): string {
 }
 
 // Siguiente fecha de vencimiento según la frecuencia. Devuelve YYYY-MM-DD.
-export function nextDueDate(dueDate: string, recurrence: Recurrence): string {
+// Para 'semanal' con días específicos (ej. [2,4] = martes y jueves) salta al
+// próximo día elegido en vez de sumar 7 fijos.
+export function nextDueDate(dueDate: string, recurrence: Recurrence, weekdays?: number[] | null): string {
+  if (recurrence === 'semanal' && weekdays && weekdays.length > 0) {
+    const d = parseLocal(dueDate)
+    for (let i = 0; i < 7; i++) {
+      d.setDate(d.getDate() + 1)
+      if (weekdays.includes(d.getDay())) return fmt(d)
+    }
+    return fmt(d)
+  }
   const cfg = RECURRENCE_CONFIG[recurrence]
   const d = parseLocal(dueDate)
   if (cfg.days) d.setDate(d.getDate() + cfg.days)
@@ -87,7 +128,7 @@ export async function regenerateIfRecurring(supabase: SupabaseClient, task: any)
   if (task?.recurrence_active === false) return null
   if (!task?.recurrence) return null
 
-  const due = nextDueDate(task.due_date, task.recurrence as Recurrence)
+  const due = nextDueDate(task.due_date, task.recurrence as Recurrence, task.recurrence_days)
   const { data } = await supabase.from('tasks').insert([{
     title:            task.title,
     description:      task.description ?? null,
@@ -99,6 +140,7 @@ export async function regenerateIfRecurring(supabase: SupabaseClient, task: any)
     due_date:         due,
     task_type:        'recurrente',
     recurrence:       task.recurrence,
+    recurrence_days:  task.recurrence_days ?? null,
     recurrence_active: true,
     aviso_dias_antes: task.aviso_dias_antes ?? null,
     parent_id:        task.parent_id ?? null,
