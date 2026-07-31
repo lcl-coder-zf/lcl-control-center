@@ -224,9 +224,11 @@ export default function TareasList({
                       <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
                         style={{ background: 'rgba(52,211,153,0.10)', color: '#059669' }}>
                         <RefreshCw className="w-3 h-3" />
-                        {t.recurrence === 'semanal' && weekdaysLabel(t.recurrence_days)
-                          ? weekdaysLabel(t.recurrence_days)
-                          : RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Recurrente'}
+                        {(() => {
+                          const short = RECURRENCE_CONFIG[t.recurrence as Recurrence]?.short ?? 'Recurrente'
+                          const dias = t.recurrence === 'semanal' ? weekdaysLabel(t.recurrence_days) : ''
+                          return dias ? `${short} · ${dias}` : short
+                        })()}
                       </span>
                     )}
                     {clientNames.length === 1 && (
