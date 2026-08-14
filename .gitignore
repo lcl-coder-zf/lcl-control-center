@@ -27,6 +27,7 @@
 # secretos locales — NUNCA subir (repo público)
 *.local.sql
 vault_seed*.sql
+vault_import*.sql
 
 # debug
 npm-debug.log*
