@@ -8,8 +8,10 @@ import {
   CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings, Users, CalendarRange,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { puedeVerModulo } from '@/lib/modulos'
 import type { Profile } from '@/types'
 import { ROLE_LABELS } from '@/types'
+import type { ModuleAccess } from '@/app/(dashboard)/layout'
 
 interface NavItem {
   href: string
@@ -35,20 +37,24 @@ const NAV_ITEMS: NavItem[] = [
 
 interface SidebarProps {
   profile: Profile
-  moduleSettings: Record<string, string>
+  access: ModuleAccess
   isOpen: boolean
   onClose: () => void
   onToggle?: () => void
 }
 
-export default function Sidebar({ profile, moduleSettings, isOpen, onClose, onToggle }: SidebarProps) {
+export default function Sidebar({ profile, access, isOpen, onClose, onToggle }: SidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
 
   function isVisible(module: string | null) {
     if (!module) return true
-    const setting = moduleSettings[`module_${module}`] ?? 'all'
-    return setting === 'all' || (setting === 'admin' && profile.role === 'admin')
+    return puedeVerModulo(module, {
+      rol: access.rol,
+      modulosOverride: access.modulosOverride,
+      rolModulos: access.rolModulos,
+      modulosApagados: access.modulosApagados,
+    })
   }
 
   async function handleLogout() {

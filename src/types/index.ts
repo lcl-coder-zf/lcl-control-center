@@ -1,4 +1,6 @@
-export type UserRole = 'admin' | 'consultant'
+// Los roles ahora son gestionables desde la app (tabla roles_app), por eso es
+// un string libre. 'admin' y 'consultant' son los dos roles de sistema.
+export type UserRole = string
 
 export const ROLE_LABELS: Record<string, string> = {
   'daniel@lcl.com': 'Desarrollador',
@@ -8,11 +10,22 @@ export const ROLE_LABELS: Record<string, string> = {
   'isabel@lcl.com': 'Consultora',
 }
 
+export interface RolApp {
+  slug: string
+  nombre: string
+  descripcion?: string | null
+  color: string
+  modulos: string[] | null
+  es_sistema: boolean
+}
+
 export interface Profile {
   id: string
   email: string
   full_name: string
   role: UserRole
+  activo?: boolean
+  modulos_override?: Record<string, boolean> | null
   avatar_url?: string
   created_at: string
 }

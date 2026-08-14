@@ -1,15 +1,34 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { Menu } from 'lucide-react'
 import Image from 'next/image'
 import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
+import { puedeVerModulo } from '@/lib/modulos'
 import type { Profile } from '@/types'
+import type { ModuleAccess } from '@/app/(dashboard)/layout'
 
-export default function AppShell({ profile, moduleSettings, children }: { profile: Profile; moduleSettings: Record<string, string>; children: React.ReactNode }) {
+export default function AppShell({ profile, access, children }: { profile: Profile; access: ModuleAccess; children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
+  const pathname = usePathname()
+  const router = useRouter()
+
+  // Guard de URL: si el usuario escribe una ruta de un módulo que no puede ver,
+  // lo devolvemos al dashboard (el menú ya la esconde, esto cubre el acceso directo).
+  useEffect(() => {
+    const slug = (pathname ?? '').split('/').filter(Boolean)[0]
+    if (!slug || slug === 'dashboard') return
+    const puede = puedeVerModulo(slug, {
+      rol: access.rol,
+      modulosOverride: access.modulosOverride,
+      rolModulos: access.rolModulos,
+      modulosApagados: access.modulosApagados,
+    })
+    if (!puede) router.replace('/dashboard')
+  }, [pathname, access, router])
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024)
@@ -36,7 +55,7 @@ export default function AppShell({ profile, moduleSettings, children }: { profil
 
       <Sidebar
         profile={profile}
-        moduleSettings={moduleSettings}
+        access={access}
         isOpen={open}
         onClose={() => setOpen(false)}
         onToggle={() => setOpen(o => !o)}

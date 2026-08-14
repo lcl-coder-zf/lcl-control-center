@@ -3,15 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import AppShell from '@/components/layout/AppShell'
 import type { Profile } from '@/types'
 
-const DEFAULT_SETTINGS: Record<string, string> = {
-  module_clientes:      'all',
-  module_tareas:        'all',
-  module_agenda:        'all',
-  module_cronograma:    'all',
-  module_equipo:        'all',
-  module_vault:         'admin',
-  // Configuración no lleva flag: siempre visible para todos. Es la única puerta
-  // a las notificaciones push y al perfil propio; la página esconde lo de admin.
+export type ModuleAccess = {
+  rol: string | null
+  rolModulos: string[] | null                    // roles_app.modulos (null = defaults del código)
+  modulosOverride: Record<string, boolean> | null // profiles.modulos_override
+  modulosApagados: string[]                       // modulos_sistema apagados globalmente
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -20,20 +16,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect('/login')
 
-  const [{ data: profile }, { data: settingsRows }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('app_settings').select('key, value'),
-  ])
-
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
   if (!profile) redirect('/login')
 
-  const moduleSettings: Record<string, string> = {
-    ...DEFAULT_SETTINGS,
-    ...Object.fromEntries((settingsRows ?? []).map(r => [r.key, r.value])),
+  const p = profile as Profile & { modulos_override?: Record<string, boolean> | null }
+
+  // Permisos del rol + módulos apagados globalmente (RLS: lectura para autenticados).
+  const [{ data: rolRow }, { data: apagadosRows }] = await Promise.all([
+    supabase.from('roles_app').select('modulos').eq('slug', p.role).maybeSingle(),
+    supabase.from('modulos_sistema').select('slug').eq('activo', false),
+  ])
+
+  const access: ModuleAccess = {
+    rol: p.role,
+    rolModulos: (rolRow as { modulos: string[] | null } | null)?.modulos ?? null,
+    modulosOverride: p.modulos_override ?? null,
+    modulosApagados: (apagadosRows ?? []).map((r) => r.slug),
   }
 
   return (
-    <AppShell profile={profile as Profile} moduleSettings={moduleSettings}>
+    <AppShell profile={profile as Profile} access={access}>
       {children}
     </AppShell>
   )
