@@ -314,28 +314,38 @@ function EventoDetalle({ ev, onClose, onToggle, onDelete, onEdit }: {
   async function abrirActa() {
     if (abriendoActa) return
     setAbriendoActa(true)
-    const supabase = createClient()
-    const { data: existente } = await supabase.from('meetings').select('id').eq('event_id', ev.id).maybeSingle()
-    if (existente?.id) { router.push(`/reuniones/${existente.id}`); return }
+    try {
+      const supabase = createClient()
+      // Si ya existe (aunque haya duplicados de clics previos) abrimos la más reciente.
+      const { data: existentes, error: selErr } = await supabase
+        .from('meetings').select('id').eq('event_id', ev.id)
+        .order('created_at', { ascending: false }).limit(1)
+      if (selErr) throw selErr
+      if (existentes && existentes.length > 0) { router.push(`/reuniones/${existentes[0].id}`); return }
 
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data: nueva } = await supabase.from('meetings').insert([{
-      title: ev.title,
-      series: ev.title,                 // agrupa las reuniones que se repiten con el mismo nombre
-      event_id: ev.id,
-      company_id: ev.company_id ?? null,
-      meeting_date: ev.event_date,
-      status: 'borrador',
-      created_by: user?.id ?? null,
-    }]).select('id').single()
-    if (!nueva?.id) { setAbriendoActa(false); return }
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: nueva, error: insErr } = await supabase.from('meetings').insert([{
+        title: ev.title,
+        series: ev.title,               // agrupa las reuniones que se repiten con el mismo nombre
+        event_id: ev.id,
+        company_id: ev.company_id ?? null,
+        meeting_date: ev.event_date,
+        status: 'borrador',
+        created_by: user?.id ?? null,
+      }]).select('id').single()
+      if (insErr) throw insErr
+      if (!nueva?.id) throw new Error('No se creó la reunión')
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const invitados: string[] = (ev.event_attendees ?? []).map((a: any) => a.profiles?.id).filter(Boolean)
-    if (invitados.length > 0) {
-      await supabase.from('meeting_attendees').insert(invitados.map(pid => ({ meeting_id: nueva.id, profile_id: pid })))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const invitados: string[] = (ev.event_attendees ?? []).map((a: any) => a.profiles?.id).filter(Boolean)
+      if (invitados.length > 0) {
+        await supabase.from('meeting_attendees').insert(invitados.map(pid => ({ meeting_id: nueva.id, profile_id: pid })))
+      }
+      router.push(`/reuniones/${nueva.id}`)
+    } catch (e) {
+      setAbriendoActa(false)
+      alert('No se pudo abrir el acta: ' + (e instanceof Error ? e.message : 'error desconocido'))
     }
-    router.push(`/reuniones/${nueva.id}`)
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const attendees = (ev.event_attendees ?? []).map((a: any) => a.profiles?.full_name).filter(Boolean)
