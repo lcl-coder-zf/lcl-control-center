@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { daysUntil, formatDate } from '@/lib/utils'
 import { RECURRENCE_CONFIG, RECURRENCE_OPTIONS, nextDueDate, type Recurrence } from '@/lib/tasks'
@@ -9,7 +10,7 @@ import { pushNotify } from '@/lib/push-client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   CalendarDays, Gauge, Plus, X, Loader2, Circle, Trash2, RefreshCw,
-  Clock, CheckCircle2, ChevronLeft, ChevronRight, Users, Building2, Pencil,
+  Clock, CheckCircle2, ChevronLeft, ChevronRight, Users, Building2, Pencil, Mic,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -303,8 +304,39 @@ function Eventos({ events, profiles, companies, reload }: { events: Row[]; profi
 function EventoDetalle({ ev, onClose, onToggle, onDelete, onEdit }: {
   ev: Row; onClose: () => void; onToggle: () => void; onDelete: () => void; onEdit: () => void
 }) {
+  const router = useRouter()
+  const [abriendoActa, setAbriendoActa] = useState(false)
   const ts = typeStyle(ev.event_type)
   const done = ev.status === 'hecho'
+
+  // Abre el acta de esta reunión; si aún no existe, la crea LIGADA al evento
+  // (mismo título, fecha, cliente, serie y asistentes) para no duplicar reuniones.
+  async function abrirActa() {
+    if (abriendoActa) return
+    setAbriendoActa(true)
+    const supabase = createClient()
+    const { data: existente } = await supabase.from('meetings').select('id').eq('event_id', ev.id).maybeSingle()
+    if (existente?.id) { router.push(`/reuniones/${existente.id}`); return }
+
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: nueva } = await supabase.from('meetings').insert([{
+      title: ev.title,
+      series: ev.title,                 // agrupa las reuniones que se repiten con el mismo nombre
+      event_id: ev.id,
+      company_id: ev.company_id ?? null,
+      meeting_date: ev.event_date,
+      status: 'borrador',
+      created_by: user?.id ?? null,
+    }]).select('id').single()
+    if (!nueva?.id) { setAbriendoActa(false); return }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invitados: string[] = (ev.event_attendees ?? []).map((a: any) => a.profiles?.id).filter(Boolean)
+    if (invitados.length > 0) {
+      await supabase.from('meeting_attendees').insert(invitados.map(pid => ({ meeting_id: nueva.id, profile_id: pid })))
+    }
+    router.push(`/reuniones/${nueva.id}`)
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const attendees = (ev.event_attendees ?? []).map((a: any) => a.profiles?.full_name).filter(Boolean)
   const fecha = new Date(ev.event_date + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
@@ -356,6 +388,12 @@ function EventoDetalle({ ev, onClose, onToggle, onDelete, onEdit }: {
           {ev.notas && (
             <div className="rounded-xl p-3 text-sm" style={{ background: '#f4f7fa', color: '#4a5a6b' }}>{ev.notas}</div>
           )}
+          <button onClick={abrirActa} disabled={abriendoActa}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+            style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }}>
+            {abriendoActa ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
+            Acta / grabar reunión
+          </button>
         </div>
         <div className="flex gap-3 px-5 pb-5">
           <button onClick={onDelete} className="px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1.5" style={{ background: 'rgba(255,107,107,0.10)', color: '#ff6b6b' }}>
