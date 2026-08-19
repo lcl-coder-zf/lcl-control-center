@@ -81,6 +81,8 @@ export default function CronogramaPage() {
   const [selectedConsultant, setSelectedConsultant] = useState<string>('all')
   const [editCell, setEditCell] = useState<{ profile: Row; dayIdx: number } | null>(null)
   const [isDesktop, setIsDesktop] = useState(false)
+  const [meId, setMeId] = useState<string | null>(null)
+  const [myRole, setMyRole] = useState<string>('consultant')
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024)
@@ -92,14 +94,19 @@ export default function CronogramaPage() {
   const load = useCallback(async (ws: Date) => {
     const supabase = createClient()
     const weekKey = toKey(ws)
-    const [p, c, e] = await Promise.all([
+    const { data: { user } } = await supabase.auth.getUser()
+    const [p, c, e, me] = await Promise.all([
       supabase.from('profiles').select('id, full_name, role').order('full_name'),
       supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
       supabase.from('schedule_entries').select('*, companies(name)').eq('week_start', weekKey),
+      user ? supabase.from('profiles').select('id, role').eq('id', user.id).single() : Promise.resolve({ data: null }),
     ])
     setProfiles(p.data ?? [])
     setCompanies(c.data ?? [])
     setEntries(e.data ?? [])
+    const mine = (me as { data: { id: string; role: string } | null }).data
+    setMeId(mine?.id ?? user?.id ?? null)
+    setMyRole(mine?.role ?? 'consultant')
     setLoading(false)
   }, [])
 
@@ -126,7 +133,12 @@ export default function CronogramaPage() {
       })
   }
 
-  const consultants = profiles.filter(p => p.role === 'consultant' || p.role === 'admin')
+  // Los admin (Daniel, Isabel, Laura) ven a todo el equipo; las consultoras
+  // solo se ven a sí mismas (mismo criterio que el módulo Tareas).
+  const isAdmin = myRole === 'admin'
+  const consultants = isAdmin
+    ? profiles.filter(p => p.role === 'consultant' || p.role === 'admin')
+    : profiles.filter(p => p.id === meId)
   const displayConsultants = selectedConsultant === 'all'
     ? consultants
     : consultants.filter(c => c.id === selectedConsultant)
