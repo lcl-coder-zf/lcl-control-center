@@ -189,17 +189,26 @@ export default function TareasPage() {
 
         <div className="w-px" style={{ background: 'rgba(0,40,80,0.10)' }} />
 
-        {[{ id: 'todas', full_name: 'Todos' }, ...profiles].map(p => (
-          <button key={p.id} onClick={() => setAsignado(p.id)}
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-            style={{
-              background: asignado === p.id ? 'rgba(167,139,250,0.15)' : '#f4f7fa',
-              color: asignado === p.id ? '#a78bfa' : '#6b8fa0',
-              border: `1px solid ${asignado === p.id ? 'rgba(167,139,250,0.3)' : 'rgba(0,40,80,0.08)'}`,
-            }}>
-            {p.full_name}
-          </button>
-        ))}
+        {[{ id: 'todas', full_name: 'Todos' }, ...profiles].map(p => {
+          const isTodos = p.id === 'todas'
+          const initials = isTodos ? '' : p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+          return (
+            <button key={p.id} onClick={() => setAsignado(p.id)}
+              className={`inline-flex items-center gap-1.5 ${isTodos ? 'px-3' : 'pl-1.5 pr-3'} py-1.5 rounded-xl text-xs font-semibold transition-all`}
+              style={{
+                background: asignado === p.id ? 'rgba(167,139,250,0.15)' : '#f4f7fa',
+                color: asignado === p.id ? '#a78bfa' : '#6b8fa0',
+                border: `1px solid ${asignado === p.id ? 'rgba(167,139,250,0.3)' : 'rgba(0,40,80,0.08)'}`,
+              }}>
+              {!isTodos && (
+                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(64,181,250,0.2)', color: '#40b5fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
+                  {initials}
+                </span>
+              )}
+              {p.full_name}
+            </button>
+          )
+        })}
       </div>
 
       <TareasList
