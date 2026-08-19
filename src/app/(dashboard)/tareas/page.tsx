@@ -19,6 +19,8 @@ export default function TareasPage() {
   const [asignado, setAsignado] = useState('todas')
   const [tipo, setTipo] = useState('todas')
   const [vista, setVista] = useState<'lista' | 'fechas'>('lista')
+  const [role, setRole] = useState<string>('consultant')
+  const isAdmin = role === 'admin'
 
   const fetchTasks = useCallback(async () => {
     const supabase = createClient()
@@ -31,15 +33,25 @@ export default function TareasPage() {
 
   useEffect(() => {
     const supabase = createClient()
-    Promise.all([
-      fetchTasks(),
-      supabase.from('profiles').select('id, full_name').order('full_name'),
-      supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
-    ]).then(([t, { data: p }, { data: c }]) => {
-      setTasks(t)
-      setProfiles(p ?? [])
-      setCompanies(c ?? [])
-      setLoading(false)
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      Promise.all([
+        fetchTasks(),
+        supabase.from('profiles').select('id, full_name').order('full_name'),
+        supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
+        user
+          ? supabase.from('profiles').select('id, role').eq('id', user.id).single()
+          : Promise.resolve({ data: null }),
+      ]).then(([t, { data: p }, { data: c }, myProfile]) => {
+        setTasks(t)
+        setProfiles(p ?? [])
+        setCompanies(c ?? [])
+        const me = (myProfile as { data: { id: string; role: string } | null }).data
+        const myId = me?.id ?? user?.id ?? null
+        setRole(me?.role ?? 'consultant')
+        // Por defecto se muestran las tareas del usuario logueado
+        if (myId) setAsignado(myId)
+        setLoading(false)
+      })
     })
   }, [fetchTasks])
 
@@ -187,9 +199,9 @@ export default function TareasPage() {
           </button>
         ))}
 
-        <div className="w-px" style={{ background: 'rgba(0,40,80,0.10)' }} />
+        {isAdmin && <div className="w-px" style={{ background: 'rgba(0,40,80,0.10)' }} />}
 
-        {[{ id: 'todas', full_name: 'Todos' }, ...profiles].map(p => {
+        {isAdmin && [{ id: 'todas', full_name: 'Todos' }, ...profiles].map(p => {
           const isTodos = p.id === 'todas'
           const initials = isTodos ? '' : p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
           return (
