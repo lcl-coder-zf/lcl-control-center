@@ -23,6 +23,7 @@ export const MODULOS: Modulo[] = [
   { slug: 'clientes',      label: 'Clientes',      grupo: 'Operación', roles: [] },
   { slug: 'tareas',        label: 'Tareas',        grupo: 'Operación', roles: [] },
   { slug: 'agenda',        label: 'Agenda',        grupo: 'Operación', roles: [] },
+  { slug: 'reuniones',     label: 'Reuniones',     grupo: 'Operación', roles: [] },
   { slug: 'cronograma',    label: 'Cronograma',    grupo: 'Operación', roles: [] },
   { slug: 'equipo',        label: 'Equipo',        grupo: 'Operación', roles: [] },
   // ── Sistema ──
