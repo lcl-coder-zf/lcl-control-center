@@ -20,6 +20,7 @@ export default function TareasPage() {
   const [tipo, setTipo] = useState('todas')
   const [vista, setVista] = useState<'lista' | 'fechas'>('lista')
   const [role, setRole] = useState<string>('consultant')
+  const [myId, setMyId] = useState<string | null>(null)
   const isAdmin = role === 'admin'
 
   const fetchTasks = useCallback(async () => {
@@ -46,10 +47,9 @@ export default function TareasPage() {
         setProfiles(p ?? [])
         setCompanies(c ?? [])
         const me = (myProfile as { data: { id: string; role: string } | null }).data
-        const myId = me?.id ?? user?.id ?? null
+        setMyId(me?.id ?? user?.id ?? null)
         setRole(me?.role ?? 'consultant')
-        // Por defecto se muestran las tareas del usuario logueado
-        if (myId) setAsignado(myId)
+        // Admins ven todo por defecto; a los consultores se les acota su set más abajo
         setLoading(false)
       })
     })
@@ -64,8 +64,18 @@ export default function TareasPage() {
 
   const mainTasks = useMemo(() => tasks.filter(t => !t.parent_id), [tasks])
 
+  // Las consultoras solo ven sus propias tareas en este módulo; los admin ven todo.
+  const isMine = useCallback((t: any) =>
+    t.assigned_to === myId || (t.task_assignees ?? []).some((a: any) => a.profile_id === myId),
+  [myId])
+
+  const scoped = useMemo(
+    () => (isAdmin ? mainTasks : mainTasks.filter(isMine)),
+    [isAdmin, mainTasks, isMine],
+  )
+
   const filtered = useMemo(() => {
-    return mainTasks.filter(t => {
+    return scoped.filter(t => {
       const matchStatus = status === 'todas' || t.status === status
       const matchPrioridad = prioridad === 'todas' || t.priority === prioridad
       const matchAsignado = asignado === 'todas'
@@ -74,13 +84,13 @@ export default function TareasPage() {
       const matchTipo = tipo === 'todas' || (tipo === 'recurrente' ? t.task_type === 'recurrente' : t.task_type !== 'recurrente')
       return matchStatus && matchPrioridad && matchAsignado && matchTipo
     })
-  }, [mainTasks, status, prioridad, asignado, tipo])
+  }, [scoped, status, prioridad, asignado, tipo])
 
   const counts = {
-    pendiente:   mainTasks.filter(t => t.status === 'pendiente').length,
-    en_progreso: mainTasks.filter(t => t.status === 'en_progreso').length,
-    vencida:     mainTasks.filter(t => t.status === 'vencida').length,
-    completada:  mainTasks.filter(t => t.status === 'completada').length,
+    pendiente:   scoped.filter(t => t.status === 'pendiente').length,
+    en_progreso: scoped.filter(t => t.status === 'en_progreso').length,
+    vencida:     scoped.filter(t => t.status === 'vencida').length,
+    completada:  scoped.filter(t => t.status === 'completada').length,
   }
 
   const pColors: Record<string, string> = { critica: '#ff6b6b', alta: '#fb923c', media: '#ffd93d', baja: '#4ade80' }
@@ -136,7 +146,7 @@ export default function TareasPage() {
       </div>
 
       {vista === 'fechas' ? (
-        <FechasClave tasks={mainTasks} />
+        <FechasClave tasks={scoped} />
       ) : (
       <>
       <div className="grid grid-cols-4 gap-3 mb-6">
