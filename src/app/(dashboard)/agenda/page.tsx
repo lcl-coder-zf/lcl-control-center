@@ -344,7 +344,12 @@ function EventoDetalle({ ev, onClose, onToggle, onDelete, onEdit }: {
       router.push(`/reuniones/${nueva.id}`)
     } catch (e) {
       setAbriendoActa(false)
-      alert('No se pudo abrir el acta: ' + (e instanceof Error ? e.message : 'error desconocido'))
+      console.error('abrirActa error', e)
+      // Los errores de Supabase son objetos { message, code, details }, no Error.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const err = e as any
+      const msg = err?.message || err?.error_description || err?.details || err?.hint || err?.code || JSON.stringify(e)
+      alert('No se pudo abrir el acta: ' + msg)
     }
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
