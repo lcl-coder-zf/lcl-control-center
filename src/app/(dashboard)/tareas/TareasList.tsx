@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   CheckSquare, Clock, AlertTriangle, Check, Loader2, RefreshCw,
-  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil, Building2, BellRing,
+  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil, Building2, BellRing, GripVertical,
 } from 'lucide-react'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -60,6 +60,24 @@ export default function TareasList({
   const [subTitle, setSubTitle] = useState('')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingTask, setEditingTask] = useState<any | null>(null)
+  // Drag & drop de subtareas (reordenar tipo Notion)
+  const [dragSub, setDragSub] = useState<{ parent: string; id: string } | null>(null)
+  const [overSub, setOverSub] = useState<string | null>(null)
+
+  // Suelta la subtarea arrastrada encima de otra: recalcula y persiste el orden.
+  async function moveSubtask(parentId: string, toId: string) {
+    setOverSub(null)
+    if (!dragSub || dragSub.parent !== parentId || dragSub.id === toId) { setDragSub(null); return }
+    const ids = getSubtasks(parentId).map(s => s.id)
+    const from = ids.indexOf(dragSub.id)
+    const to = ids.indexOf(toId)
+    setDragSub(null)
+    if (from < 0 || to < 0) return
+    ids.splice(to, 0, ids.splice(from, 1)[0])
+    const supabase = createClient()
+    await Promise.all(ids.map((id, i) => supabase.from('tasks').update({ position: i }).eq('id', id)))
+    onRefresh?.()
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function toggleComplete(task: any) {
@@ -97,6 +115,8 @@ export default function TareasList({
     if (!subTitle.trim()) return
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
+    const siblings = getSubtasks(parent.id)
+    const nextPos = siblings.length ? Math.max(...siblings.map(s => s.position ?? 0)) + 1 : 0
     await supabase.from('tasks').insert([{
       title: subTitle.trim(),
       parent_id: parent.id,
@@ -108,6 +128,7 @@ export default function TareasList({
       due_date: parent.due_date,
       task_type: 'esporadica',
       recurrence_active: false,
+      position: nextPos,
       created_by: user?.id ?? null,
     }])
     setSubTitle('')
@@ -142,7 +163,9 @@ export default function TareasList({
 
   const topLevel = tasks.filter(t => !t.parent_id)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getSubtasks = (id: string) => tasks.filter((t: any) => t.parent_id === id)
+  const getSubtasks = (id: string) => tasks
+    .filter(t => t.parent_id === id)
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
 
   // Obtiene los nombres de todos los asignados de una tarea
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -349,8 +372,20 @@ export default function TareasList({
                         {subtasks.map(s => {
                           const sDone = s.status === 'completada'
                           return (
-                            <div key={s.id} className="flex items-center gap-2.5 rounded-xl px-3 py-2"
-                              style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.05)' }}>
+                            <div key={s.id}
+                              draggable
+                              onDragStart={() => setDragSub({ parent: t.id, id: s.id })}
+                              onDragOver={e => { e.preventDefault(); if (overSub !== s.id) setOverSub(s.id) }}
+                              onDragLeave={() => { if (overSub === s.id) setOverSub(null) }}
+                              onDrop={() => moveSubtask(t.id, s.id)}
+                              onDragEnd={() => { setDragSub(null); setOverSub(null) }}
+                              className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all"
+                              style={{
+                                background: '#f4f7fa',
+                                border: `1px solid ${overSub === s.id && dragSub && dragSub.id !== s.id ? 'rgba(64,181,250,0.6)' : 'rgba(0,40,80,0.05)'}`,
+                                opacity: dragSub?.id === s.id ? 0.4 : 1,
+                              }}>
+                              <GripVertical className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#b0bcc7', cursor: 'grab' }} />
                               <button onClick={() => toggleSubtask(s)}
                                 className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
                                 style={{ background: sDone ? 'rgba(74,222,128,0.2)' : '#fff', border: `1.5px solid ${sDone ? '#4ade80' : 'rgba(0,40,80,0.15)'}` }}>
