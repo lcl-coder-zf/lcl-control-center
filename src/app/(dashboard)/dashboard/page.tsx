@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { DashboardSkeleton } from '@/components/ui/Skeleton'
 import EmployeePanel from '@/components/equipo/EmployeePanel'
+import KpiPanel, { type KpiItem } from '@/components/dashboard/KpiPanel'
 
 const PRIORITY = {
   baja:    { color: '#4ade80', bg: 'rgba(74,222,128,0.10)', label: 'Baja' },
@@ -32,6 +33,7 @@ export default function DashboardPage() {
   const [completing, setCompleting] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null)
+  const [openKpi, setOpenKpi] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -96,19 +98,69 @@ export default function DashboardPage() {
 
   // Tareas completadas en los últimos 7 días.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const completadas7d = data.allTasks.filter((t: any) => {
+  const completadas7dList = data.allTasks.filter((t: any) => {
     if (t.status !== 'completada' || !t.completed_at) return false
     const d = daysUntil(t.completed_at)
     return d <= 0 && d >= -7
-  }).length
+  })
 
   const kpis = [
-    { label: 'Clientes activos',   value: data.clientes.length,    icon: Building2,     color: '#40b5fa' },
-    { label: 'Completadas (7d)',   value: completadas7d,           icon: CheckCircle2,  color: '#4ade80' },
-    { label: 'Por hacer',          value: active.length,           icon: CheckSquare,   color: '#a78bfa' },
-    { label: 'Atrasadas',          value: atrasadas.length,        icon: AlertTriangle, color: '#ff6b6b' },
-    { label: 'Vencen esta semana', value: hoy.length + semana.length, icon: CalendarClock, color: '#ffd93d' },
+    { key: 'clientes',   label: 'Clientes activos',   value: data.clientes.length,       icon: Building2,     color: '#40b5fa' },
+    { key: 'completadas', label: 'Completadas (7d)',  value: completadas7dList.length,   icon: CheckCircle2,  color: '#4ade80' },
+    { key: 'porhacer',   label: 'Por hacer',          value: active.length,              icon: CheckSquare,   color: '#a78bfa' },
+    { key: 'atrasadas',  label: 'Atrasadas',          value: atrasadas.length,           icon: AlertTriangle, color: '#ff6b6b' },
+    { key: 'semana',     label: 'Vencen esta semana', value: hoy.length + semana.length, icon: CalendarClock, color: '#ffd93d' },
   ]
+  const openKpiMeta = kpis.find(k => k.key === openKpi)
+
+  // Detalle (lista) de cada KPI para el panel lateral tipo Notion.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const subOf = (t: any) => [t.profiles?.full_name, taskCompanyNames(t)[0]].filter(Boolean).join(' · ') || undefined
+  function buildKpiItems(key: string): KpiItem[] {
+    if (key === 'clientes') {
+      return data.clientes
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((c: { id: string; name: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const n = active.filter((t: any) => taskCompanyIds(t).includes(c.id)).length
+          return { id: c.id, title: c.name, subtitle: n ? `${n} tarea${n !== 1 ? 's' : ''} activa${n !== 1 ? 's' : ''}` : 'Sin tareas activas', href: `/clientes/${c.id}` }
+        })
+        .sort((a: KpiItem, b: KpiItem) => a.title.localeCompare(b.title))
+    }
+    if (key === 'completadas') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return [...completadas7dList].sort((a: any, b: any) => +new Date(b.completed_at) - +new Date(a.completed_at))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((t: any) => ({ id: t.id, title: t.title, subtitle: subOf(t), meta: formatDate(t.completed_at), metaColor: '#4ade80' }))
+    }
+    if (key === 'porhacer') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return active.map((t: any) => {
+        const d = daysUntil(t.due_date)
+        return {
+          id: t.id, title: t.title, subtitle: subOf(t),
+          meta: d < 0 ? `${Math.abs(d)}d` : d === 0 ? 'Hoy' : formatDate(t.due_date),
+          metaColor: d < 0 ? '#ff6b6b' : d <= 2 ? '#fb923c' : '#6b8fa0',
+        }
+      })
+    }
+    if (key === 'atrasadas') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return [...atrasadas].sort((a: any, b: any) => daysUntil(a.due_date) - daysUntil(b.due_date))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((t: any) => ({ id: t.id, title: t.title, subtitle: subOf(t), meta: `${Math.abs(daysUntil(t.due_date))}d`, metaColor: '#ff6b6b' }))
+    }
+    if (key === 'semana') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return [...hoy, ...semana].sort((a: any, b: any) => daysUntil(a.due_date) - daysUntil(b.due_date))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((t: any) => {
+          const d = daysUntil(t.due_date)
+          return { id: t.id, title: t.title, subtitle: subOf(t), meta: d === 0 ? 'Hoy' : `${d}d`, metaColor: d === 0 ? '#e0b800' : '#6b8fa0' }
+        })
+    }
+    return []
+  }
 
   return (
     <>
@@ -122,17 +174,19 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs — clickeables, abren panel lateral con el detalle */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
-        {kpis.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="rounded-2xl p-4 relative overflow-hidden"
+        {kpis.map(({ key, label, value, icon: Icon, color }) => (
+          <button key={key} onClick={() => setOpenKpi(key)}
+            className="text-left rounded-2xl p-4 relative overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer group"
             style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2" style={{ background: `${color}18` }}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2 transition-transform duration-200 group-hover:scale-110" style={{ background: `${color}18` }}>
               <Icon className="w-4 h-4" style={{ color }} />
             </div>
             <div className="text-2xl font-black mb-0.5" style={{ color, lineHeight: 1 }}>{value}</div>
             <div className="text-[10px] uppercase tracking-wider font-medium" style={{ color: '#6b8fa0' }}>{label}</div>
-          </div>
+            <ArrowRight className="w-3.5 h-3.5 absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color }} />
+          </button>
         ))}
       </div>
 
@@ -293,6 +347,18 @@ export default function DashboardPage() {
           profile={selectedEmployee}
           currentUserRole={data?.currentUserRole ?? 'consultant'}
           onClose={() => setSelectedEmployee(null)}
+        />
+      )}
+
+      {openKpi && openKpiMeta && (
+        <KpiPanel
+          label={openKpiMeta.label}
+          value={openKpiMeta.value}
+          color={openKpiMeta.color}
+          Icon={openKpiMeta.icon}
+          items={buildKpiItems(openKpi)}
+          emptyText="Nada por aquí 🎉"
+          onClose={() => setOpenKpi(null)}
         />
       )}
     </>
