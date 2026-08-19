@@ -47,9 +47,12 @@ export default function TareasPage() {
         setProfiles(p ?? [])
         setCompanies(c ?? [])
         const me = (myProfile as { data: { id: string; role: string } | null }).data
-        setMyId(me?.id ?? user?.id ?? null)
+        const uid = me?.id ?? user?.id ?? null
+        setMyId(uid)
         setRole(me?.role ?? 'consultant')
-        // Admins ven todo por defecto; a los consultores se les acota su set más abajo
+        // Al entrar, el filtro arranca en las tareas del usuario logueado (su badge).
+        // Los admin pueden cambiar a otra persona o Todos; las consultoras quedan fijas.
+        if (uid) setAsignado(uid)
         setLoading(false)
       })
     })
