@@ -79,6 +79,12 @@ export async function PATCH(req: NextRequest) {
 
   const admin = createAdminClient() as AnyClient
 
+  // Email actual del perfil: sirve para ubicar el registro en el vault de logins
+  // aunque en esta edición no se esté cambiando el email.
+  const { data: perfilActual } = await admin
+    .from('profiles').select('email').eq('id', id).single()
+  const emailAnterior: string | undefined = perfilActual?.email
+
   // Cambios en Supabase Auth (email y/o contraseña)
   if (email || password) {
     const authPatch: Record<string, unknown> = {}
@@ -102,15 +108,18 @@ export async function PATCH(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Reflejar en el vault de logins
-  if (email || password || full_name || role) {
+  // Reflejar en el vault de logins. Ubicamos el registro por el email anterior
+  // (o el nuevo, si es el único que tenemos) para que también se actualice
+  // cuando solo cambian contraseña/nombre/rol sin tocar el email.
+  const emailVault = emailAnterior || email?.trim().toLowerCase()
+  if (emailVault && (email || password || full_name || role)) {
     try {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
       if (full_name) patch.nombre = full_name
       if (email) patch.email = email.trim().toLowerCase()
       if (password) patch.pass = password
       if (role) patch.rol = role
-      if (email) await admin.from('usuarios_sistema').update(patch).eq('email', email.trim().toLowerCase())
+      await admin.from('usuarios_sistema').update(patch).eq('email', emailVault)
     } catch { /* no bloquear */ }
   }
 
