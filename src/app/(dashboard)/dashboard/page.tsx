@@ -24,7 +24,7 @@ const PRIORITY = {
   critica: { color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)', label: 'Crítica' },
 }
 
-const TASK_SELECT = '*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name), task_companies(company_id, companies(id, name))'
+const TASK_SELECT = '*, companies(id, name), projects(id, name), profiles!tasks_assigned_to_fkey(id, full_name), task_assignees(profile_id), task_companies(company_id, companies(id, name))'
 
 export default function DashboardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +47,7 @@ export default function DashboardPage() {
       allTasks: tareas.data ?? [],
       profiles: perfiles.data ?? [],
       currentUserRole: myProfile.data?.role ?? 'consultant',
+      currentUserId: user?.id ?? null,
     })
   }, [])
 
@@ -66,6 +67,13 @@ export default function DashboardPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const active = data.allTasks.filter((t: any) => t.status !== 'completada')
+  // Las tareas del usuario logueado van de primero en "Tareas por hacer"; el resto
+  // conserva su orden por fecha (sort estable).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const esMia = (t: any) => t.assigned_to === data.currentUserId
+    || (t.task_assignees ?? []).some((a: any) => a.profile_id === data.currentUserId)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const activeOrdenada = [...active].sort((a: any, b: any) => (esMia(a) ? 0 : 1) - (esMia(b) ? 0 : 1))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const atrasadas = active.filter((t: any) => daysUntil(t.due_date) < 0)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,7 +162,7 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {active.slice(0, 12).map((t: any) => {
+              {activeOrdenada.slice(0, 12).map((t: any) => {
                 const days = daysUntil(t.due_date)
                 const isVencida = days < 0
                 const isHoy = days === 0
