@@ -71,7 +71,7 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.title.trim()) { setError('El título es obligatorio'); return }
-    if (!form.due_date) { setError('La fecha límite es obligatoria'); return }
+    if (form.task_type !== 'recurrente' && !form.due_date) { setError('La fecha límite es obligatoria'); return }
     if (assignedIds.size === 0) { setError('Asigna la tarea a alguien'); return }
     setLoading(true)
     setError('')
@@ -86,7 +86,10 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     const recurrenceDays = usaDiasSemana && weekdays.size > 0
       ? [...weekdays].sort((a, b) => a - b)
       : null
-    const dueDate = recurrenceDays ? firstWeeklyDate(form.due_date, recurrenceDays) : form.due_date
+    // Recurrente: no se pide fecha; se agenda desde hoy (o el próximo día elegido).
+    const hoy = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
+    const baseDate = form.task_type === 'recurrente' ? hoy : form.due_date
+    const dueDate = recurrenceDays ? firstWeeklyDate(baseDate, recurrenceDays) : baseDate
 
     const { data: task, error: insertErr } = await supabase.from('tasks').insert([{
       title: form.title,
@@ -172,14 +175,16 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
               className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
               style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className={form.task_type === 'recurrente' ? '' : 'grid grid-cols-2 gap-4'}>
             <Sel label="Prioridad" value={form.priority} onChange={v => set('priority', v)}>
               <option value="baja">🟢 Baja</option>
               <option value="media">🟡 Media</option>
               <option value="alta">🟠 Alta</option>
               <option value="critica">🔴 Crítica</option>
             </Sel>
-            <Fi label={form.task_type === 'recurrente' ? 'Primera fecha *' : 'Fecha límite *'} value={form.due_date} onChange={v => set('due_date', v)} type="date" />
+            {form.task_type !== 'recurrente' && (
+              <Fi label="Fecha límite *" value={form.due_date} onChange={v => set('due_date', v)} type="date" />
+            )}
           </div>
 
           {/* Tipo */}
@@ -204,11 +209,18 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
           </div>
 
           {form.task_type === 'recurrente' && (
-            <Sel label="Frecuencia" value={form.recurrence} onChange={v => set('recurrence', v)}>
-              {RECURRENCE_OPTIONS.map(r => (
-                <option key={r} value={r}>{RECURRENCE_CONFIG[r].label}</option>
-              ))}
-            </Sel>
+            <div>
+              <Sel label="Frecuencia" value={form.recurrence} onChange={v => set('recurrence', v)}>
+                {RECURRENCE_OPTIONS.map(r => (
+                  <option key={r} value={r}>{RECURRENCE_CONFIG[r].label}</option>
+                ))}
+              </Sel>
+              {!usaDiasSemana && (
+                <p className="text-[11px] mt-2" style={{ color: '#86a2b2' }}>
+                  Las recurrentes no tienen fecha de vencimiento: se agendan desde hoy y se repiten con esta frecuencia.
+                </p>
+              )}
+            </div>
           )}
 
           {/* Días específicos para recurrencia semanal (ej. solo martes y jueves) */}
@@ -322,7 +334,12 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
               style={{ background: form.priority === 'critica' ? '#ff6b6b' : form.priority === 'alta' ? '#fb923c' : form.priority === 'media' ? '#ffd93d' : '#4ade80' }} />
             <div>
               <p className="text-sm font-medium" style={{ color: '#1a2e3b' }}>{form.title}</p>
-              {form.due_date && (
+              {form.task_type === 'recurrente' ? (
+                <p className="text-xs" style={{ color: '#6b8fa0' }}>
+                  {RECURRENCE_CONFIG[form.recurrence as keyof typeof RECURRENCE_CONFIG].label} · sin vencimiento
+                  {assignedIds.size > 0 && ` · ${assignedIds.size} persona${assignedIds.size > 1 ? 's' : ''}`}
+                </p>
+              ) : form.due_date && (
                 <p className="text-xs" style={{ color: '#6b8fa0' }}>
                   Vence: {new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(new Date(form.due_date + 'T12:00:00'))}
                   {assignedIds.size > 0 && ` · ${assignedIds.size} persona${assignedIds.size > 1 ? 's' : ''}`}
