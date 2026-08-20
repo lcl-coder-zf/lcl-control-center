@@ -210,8 +210,10 @@ export default function TareasList({
         {topLevel.map(t => {
           const pr = PRIORITY_STYLES[t.priority] ?? PRIORITY_STYLES.media
           const days = daysUntil(t.due_date)
-          const isVencida = t.status === 'vencida' || (days < 0 && t.status !== 'completada')
-          const isUrgente = days <= 2 && days >= 0 && t.status !== 'completada'
+          const isRecurrente = t.task_type === 'recurrente'
+          // Las recurrentes no vencen: su fecha es solo la próxima ocurrencia.
+          const isVencida = !isRecurrente && (t.status === 'vencida' || (days < 0 && t.status !== 'completada'))
+          const isUrgente = !isRecurrente && days <= 2 && days >= 0 && t.status !== 'completada'
           const isCompleta = t.status === 'completada'
           const isEnProgreso = t.status === 'en_progreso'
           const subtasks = getSubtasks(t.id)
@@ -308,7 +310,9 @@ export default function TareasList({
                         ? <span style={{ color: '#4ade80' }}>Completada</span>
                         : isEnProgreso
                           ? <><CircleDot className="w-3 h-3" />En progreso</>
-                          : <><Clock className="w-3 h-3" />{days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>
+                          : isRecurrente
+                            ? <><RefreshCw className="w-3 h-3" />Próx: {formatDate(t.due_date)}</>
+                            : <><Clock className="w-3 h-3" />{days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>
                     }
                   </div>
                   {!isCompleta && (

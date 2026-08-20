@@ -92,7 +92,7 @@ export default function TareasPage() {
   const counts = {
     pendiente:   scoped.filter(t => t.status === 'pendiente').length,
     en_progreso: scoped.filter(t => t.status === 'en_progreso').length,
-    vencida:     scoped.filter(t => t.status === 'vencida').length,
+    vencida:     scoped.filter(t => t.status === 'vencida' && t.task_type !== 'recurrente').length,
     completada:  scoped.filter(t => t.status === 'completada').length,
   }
 
