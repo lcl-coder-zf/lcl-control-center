@@ -165,3 +165,7 @@ body {
 .animate-fade-in {
   animation: fade-in 0.22s ease-out;
 }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
