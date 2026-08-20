@@ -528,7 +528,8 @@ function EditTareaModal({
   }
 
   async function save() {
-    if (!title.trim() || !dueDate) return
+    if (!title.trim()) return
+    if (taskType !== 'recurrente' && !dueDate) return
     if (assignedIds.size === 0) { alert('Asigna la tarea a alguien'); return }
     setSaving(true)
     const supabase = createClient()
@@ -538,7 +539,10 @@ function EditTareaModal({
     const recurrenceDays = usaDiasSemana && weekdays.size > 0
       ? [...weekdays].sort((a, b) => a - b)
       : null
-    const nuevaFecha = recurrenceDays ? firstWeeklyDate(dueDate, recurrenceDays) : dueDate
+    // Recurrente sin fecha: se ancla a hoy (o al próximo día elegido).
+    const hoy = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
+    const baseDate = taskType === 'recurrente' ? (dueDate || hoy) : dueDate
+    const nuevaFecha = recurrenceDays ? firstWeeklyDate(baseDate, recurrenceDays) : baseDate
 
     await supabase.from('tasks').update({
       title,
@@ -597,8 +601,8 @@ function EditTareaModal({
             <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} style={{ ...INP, resize: 'none' } as React.CSSProperties} />
           </div>
 
-          {/* Prioridad + Fecha */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Prioridad + Fecha (las recurrentes no piden fecha) */}
+          <div className={taskType === 'recurrente' ? '' : 'grid grid-cols-2 gap-3'}>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>Prioridad</label>
               <select value={priority} onChange={e => setPriority(e.target.value)} style={INP}>
@@ -608,10 +612,12 @@ function EditTareaModal({
                 <option value="critica">🔴 Crítica</option>
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>Fecha límite *</label>
-              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={INP} />
-            </div>
+            {taskType !== 'recurrente' && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>Fecha límite *</label>
+                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={INP} />
+              </div>
+            )}
           </div>
 
           {/* Tipo */}
@@ -738,7 +744,7 @@ function EditTareaModal({
 
         <div className="flex gap-3 px-5 pb-5">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border text-sm" style={{ borderColor: '#e2e8f5', color: '#6b7a9e' }}>Cancelar</button>
-          <button onClick={save} disabled={saving || !title.trim() || !dueDate}
+          <button onClick={save} disabled={saving || !title.trim() || (taskType !== 'recurrente' && !dueDate)}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-1"
             style={{ background: '#40b5fa' }}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar cambios'}
