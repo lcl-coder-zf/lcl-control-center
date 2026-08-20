@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   CheckSquare, Clock, AlertTriangle, Check, Loader2, RefreshCw,
-  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil, Building2, BellRing, GripVertical,
+  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil, Building2, BellRing, GripVertical, CircleDot,
 } from 'lucide-react'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -14,12 +14,15 @@ import {
   WEEKDAYS, firstWeeklyDate, weekdaysLabel,
 } from '@/lib/tasks'
 
-function ProgressRing({ done, total }: { done: number; total: number }) {
+function ProgressRing({ done, total, inProgress }: { done: number; total: number; inProgress?: boolean }) {
   const pct    = total === 0 ? 0 : Math.round((done / total) * 100)
+  // Con estado "en progreso" y sin avance real, dibujamos un arco corto morado como pista visual.
+  const arcPct = inProgress && pct === 0 ? 35 : pct
   const r      = 13
   const circ   = 2 * Math.PI * r
-  const offset = circ * (1 - pct / 100)
-  const color  = pct === 100 ? '#4ade80' : pct === 0 ? 'rgba(0,40,80,0.12)' : '#40b5fa'
+  const offset = circ * (1 - arcPct / 100)
+  const color  = pct === 100 ? '#4ade80' : inProgress ? '#a78bfa' : pct === 0 ? 'rgba(0,40,80,0.12)' : '#40b5fa'
+  const txt    = pct === 100 ? '#4ade80' : inProgress ? '#a78bfa' : pct === 0 ? '#b0bcc7' : '#40b5fa'
   return (
     <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 34, height: 34 }}>
       <svg width="34" height="34" viewBox="0 0 34 34" style={{ transform: 'rotate(-90deg)' }}>
@@ -28,7 +31,7 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
           strokeDasharray={circ} strokeDashoffset={offset}
           strokeLinecap="round" style={{ transition: 'stroke-dashoffset 400ms ease, stroke 300ms ease' }} />
       </svg>
-      <span className="absolute text-[9px] font-bold" style={{ color: pct === 100 ? '#4ade80' : pct === 0 ? '#b0bcc7' : '#40b5fa' }}>
+      <span className="absolute text-[9px] font-bold" style={{ color: txt }}>
         {pct}%
       </span>
     </div>
@@ -98,6 +101,18 @@ export default function TareasList({
         toAdmins: true,
       })
     }
+    setCompleting(null)
+    onRefresh?.()
+  }
+
+  // Alterna pendiente ↔ en_progreso (no aplica a completadas)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function toggleProgress(task: any) {
+    if (task.status === 'completada') return
+    setCompleting(task.id)
+    const supabase = createClient()
+    const next = task.status === 'en_progreso' ? 'pendiente' : 'en_progreso'
+    await supabase.from('tasks').update({ status: next }).eq('id', task.id)
     setCompleting(null)
     onRefresh?.()
   }
@@ -198,6 +213,7 @@ export default function TareasList({
           const isVencida = t.status === 'vencida' || (days < 0 && t.status !== 'completada')
           const isUrgente = days <= 2 && days >= 0 && t.status !== 'completada'
           const isCompleta = t.status === 'completada'
+          const isEnProgreso = t.status === 'en_progreso'
           const subtasks = getSubtasks(t.id)
           const doneSubs = subtasks.filter(s => s.status === 'completada').length
           const isOpen = expanded.has(t.id)
@@ -207,8 +223,8 @@ export default function TareasList({
           return (
             <div key={t.id} className="rounded-2xl transition-all"
               style={{
-                background: isVencida ? 'rgba(255,107,107,0.04)' : '#ffffff',
-                border: `1px solid ${isVencida ? 'rgba(255,107,107,0.18)' : isUrgente ? 'rgba(255,217,61,0.2)' : 'rgba(0,40,80,0.08)'}`,
+                background: isVencida ? 'rgba(255,107,107,0.04)' : isEnProgreso ? 'rgba(167,139,250,0.05)' : '#ffffff',
+                border: `1px solid ${isVencida ? 'rgba(255,107,107,0.18)' : isEnProgreso ? 'rgba(167,139,250,0.28)' : isUrgente ? 'rgba(255,217,61,0.2)' : 'rgba(0,40,80,0.08)'}`,
               }}>
 
               {/* Fila principal */}
@@ -230,8 +246,8 @@ export default function TareasList({
                 </button>
 
                 {subtasks.length > 0
-                  ? <ProgressRing done={doneSubs} total={subtasks.length} />
-                  : <ProgressRing done={isCompleta ? 1 : 0} total={1} />
+                  ? <ProgressRing done={doneSubs} total={subtasks.length} inProgress={isEnProgreso} />
+                  : <ProgressRing done={isCompleta ? 1 : 0} total={1} inProgress={isEnProgreso} />
                 }
 
                 <button onClick={() => toggleExpand(t.id)} className="flex-1 min-w-0 text-left">
@@ -285,14 +301,24 @@ export default function TareasList({
                     {pr.label}
                   </span>
                   <div className="flex items-center gap-1 text-xs"
-                    style={{ color: isVencida ? '#ff6b6b' : isUrgente ? '#ffd93d' : '#86a2b2' }}>
+                    style={{ color: isVencida ? '#ff6b6b' : isEnProgreso ? '#a78bfa' : isUrgente ? '#ffd93d' : '#86a2b2' }}>
                     {isVencida
                       ? <><AlertTriangle className="w-3 h-3" />{Math.abs(days)}d vencida</>
                       : isCompleta
                         ? <span style={{ color: '#4ade80' }}>Completada</span>
-                        : <><Clock className="w-3 h-3" />{days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>
+                        : isEnProgreso
+                          ? <><CircleDot className="w-3 h-3" />En progreso</>
+                          : <><Clock className="w-3 h-3" />{days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>
                     }
                   </div>
+                  {!isCompleta && (
+                    <button onClick={() => toggleProgress(t)} disabled={completing === t.id}
+                      title={isEnProgreso ? 'Quitar de en progreso' : 'Poner en progreso'}
+                      className="p-1 rounded-lg transition-opacity"
+                      style={{ color: '#a78bfa', opacity: isEnProgreso ? 1 : 0.4 }}>
+                      <CircleDot className="w-4 h-4" />
+                    </button>
+                  )}
                   <button onClick={() => setEditingTask(t)} title="Editar tarea"
                     className="p-1 rounded-lg opacity-40 hover:opacity-100 transition-opacity" style={{ color: '#40b5fa' }}>
                     <Pencil className="w-4 h-4" />
