@@ -25,9 +25,14 @@ export async function POST(req: NextRequest) {
   await admin.from('meetings').update({ status: 'procesando' }).eq('id', meetingId)
 
   try {
-    const transcript = await transcribeAudio(meeting.audio_url)
-    // Guardar el transcript de una: si el acta falla después, no se pierde.
-    await admin.from('meetings').update({ transcript }).eq('id', meetingId)
+    // Si ya hay transcript (p.ej. el acta falló antes), no re-transcribir:
+    // ahorra la cuota de audio de Groq y solo regenera el acta.
+    let transcript: string = meeting.transcript ?? ''
+    if (!transcript.trim()) {
+      transcript = await transcribeAudio(meeting.audio_url)
+      // Guardar el transcript de una: si el acta falla después, no se pierde.
+      await admin.from('meetings').update({ transcript }).eq('id', meetingId)
+    }
 
     const attendees: string[] = (meeting.meeting_attendees ?? [])
       .map((a: AnyClient) => a.profiles?.full_name)
