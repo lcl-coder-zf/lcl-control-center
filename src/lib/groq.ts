@@ -39,6 +39,38 @@ export interface ActaGenerada {
   actionItems: { title: string; assignee?: string }[]
 }
 
+// Groq rota sus modelos seguido y no todos están en toda cuenta. En vez de
+// hardcodear uno (que puede dar 404), preguntamos qué modelos hay y elegimos
+// el mejor disponible de esta lista de preferencia.
+const ACTA_MODEL_PRIORITY = [
+  'llama-3.3-70b-versatile',
+  'openai/gpt-oss-120b',
+  'moonshotai/kimi-k2-instruct',
+  'openai/gpt-oss-20b',
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'qwen/qwen3-32b',
+  'llama-3.1-8b-instant',
+]
+
+let cachedActaModel: string | null = null
+
+async function pickActaModel(): Promise<string> {
+  if (cachedActaModel) return cachedActaModel
+  try {
+    const res = await fetch(`${GROQ_URL}/models`, { headers: { Authorization: `Bearer ${groqKey()}` } })
+    if (res.ok) {
+      const data = await res.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ids: string[] = (data?.data ?? []).map((m: any) => m.id as string)
+      const esTexto = (id: string) => !/whisper|tts|guard|embed|prompt-guard/i.test(id)
+      const elegido = ACTA_MODEL_PRIORITY.find(m => ids.includes(m)) ?? ids.find(esTexto)
+      if (elegido) { cachedActaModel = elegido; return elegido }
+    }
+  } catch { /* cae al fallback */ }
+  return ACTA_MODEL_PRIORITY[0]
+}
+
 // Toma la transcripción y arma resumen + acta (markdown) + tareas de seguimiento.
 export async function generateActa(
   transcript: string,
@@ -66,7 +98,7 @@ ${transcript}
     method: 'POST',
     headers: { Authorization: `Bearer ${groqKey()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
+      model: await pickActaModel(),
       temperature: 0.3,
       response_format: { type: 'json_object' },
       messages: [
