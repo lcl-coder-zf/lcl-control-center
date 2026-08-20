@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   Mic, Square, Upload, Loader2, Sparkles, ArrowLeft, Calendar, Building2,
   Users, Play, CheckSquare, Plus, Wand2, FileText, History,
-  ChevronDown, Pencil, Check, ScrollText,
+  ChevronDown, Pencil, Check, ScrollText, Download,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
@@ -184,6 +184,56 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
     setSavingActa(false)
     setEditingActa(false)
     await load()
+  }
+
+  // ── Descargar el acta como PDF (ventana de impresión con estilo LCL) ──
+  function descargarActa() {
+    if (!meeting) return
+    const esc = (s: string) => (s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))
+    // markdown mini → HTML (mismos patrones que el visor en pantalla)
+    const actaHtml = (actaDraft || '').split('\n').map(ln => {
+      const h2 = ln.match(/^##\s+(.*)/); const h3 = ln.match(/^###\s+(.*)/); const li = ln.match(/^[-*]\s+(.*)/)
+      const bold = (t: string) => esc(t).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      if (h2) return `<h2>${bold(h2[1])}</h2>`
+      if (h3) return `<h3>${bold(h3[1])}</h3>`
+      if (li) return `<li>${bold(li[1])}</li>`
+      if (!ln.trim()) return ''
+      return `<p>${bold(ln)}</p>`
+    }).join('\n').replace(/(<li>[^\n]*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+    const asistentes = attendees.map((a: Row) => esc(a.full_name)).join(' · ')
+    const tareas = seguimiento.map((t: Row) => `<li>${esc(t.title)}${t.profiles?.full_name ? ` — <em>${esc(t.profiles.full_name)}</em>` : ''}</li>`).join('')
+    const win = window.open('', '_blank', 'width=820,height=1000')
+    if (!win) return
+    win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acta — ${esc(meeting.title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1a2e3b; margin: 0; padding: 48px 56px; line-height: 1.6; }
+  .ribbon { height: 6px; border-radius: 6px; background: linear-gradient(90deg,#40b5fa,#a78bfa); margin-bottom: 28px; }
+  .kicker { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #40b5fa; font-weight: 700; }
+  h1 { font-size: 30px; margin: 6px 0 8px; letter-spacing: -.5px; }
+  .meta { color: #6b8fa0; font-size: 13px; margin-bottom: 4px; }
+  .resumen { background: #f4f8fd; border: 1px solid #dce8f6; border-radius: 14px; padding: 16px 18px; margin: 24px 0; font-size: 14px; color: #3a4a5b; }
+  .resumen b { color: #40b5fa; display: block; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; margin-bottom: 6px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #40b5fa; border-bottom: 1px solid #e2ecf6; padding-bottom: 6px; margin: 26px 0 10px; }
+  h3 { font-size: 15px; margin: 14px 0 4px; }
+  p { margin: 4px 0; font-size: 14px; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { font-size: 14px; margin: 3px 0; }
+  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2ecf6; color: #9aaac8; font-size: 11px; display: flex; justify-content: space-between; }
+  @media print { body { padding: 24px 32px; } }
+</style></head><body>
+  <div class="ribbon"></div>
+  <div class="kicker">Acta de reunión${meeting.series ? ` · ${esc(meeting.series)}` : ''}</div>
+  <h1>${esc(meeting.title)}</h1>
+  <div class="meta">📅 ${esc(formatDate(meeting.meeting_date))}${meeting.companies?.name ? ` &nbsp;·&nbsp; 🏢 ${esc(meeting.companies.name)}` : ''}</div>
+  ${asistentes ? `<div class="meta">👥 ${asistentes}</div>` : ''}
+  ${meeting.summary ? `<div class="resumen"><b>Resumen</b>${esc(meeting.summary)}</div>` : ''}
+  <div>${actaHtml || '<p><em>Sin acta.</em></p>'}</div>
+  ${tareas ? `<h2>Compromisos / Seguimiento</h2><ul>${tareas}</ul>` : ''}
+  <div class="footer"><span>LCL Gestión Empresarial</span><span>Generado ${new Date().toLocaleDateString('es-CO')}</span></div>
+  <script>window.onload = () => { window.print(); }</script>
+</body></html>`)
+    win.document.close()
   }
 
   // ── Crear tarea desde el acta (idea de Laura) ──────────────
@@ -407,17 +457,26 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
           <h2 className="text-sm font-bold uppercase tracking-wide flex items-center gap-2" style={{ color: '#1a2e3b' }}>
             <FileText className="w-4 h-4" style={{ color: '#40b5fa' }} />Acta
           </h2>
-          {editingActa || !actaDraft.trim() ? (
-            <button onClick={guardarActa} disabled={savingActa}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: '#40b5fa', color: '#fff' }}>
-              {savingActa ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Guardar
-            </button>
-          ) : (
-            <button onClick={() => setEditingActa(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: '#f4f7fa', color: '#40b5fa' }}>
-              <Pencil className="w-3 h-3" />Editar
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {actaDraft.trim() && !editingActa && (
+              <button onClick={descargarActa}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:brightness-105"
+                style={{ background: 'linear-gradient(135deg,#40b5fa,#a78bfa)', color: '#fff' }}>
+                <Download className="w-3 h-3" />Descargar PDF
+              </button>
+            )}
+            {editingActa || !actaDraft.trim() ? (
+              <button onClick={guardarActa} disabled={savingActa}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: '#40b5fa', color: '#fff' }}>
+                {savingActa ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Guardar
+              </button>
+            ) : (
+              <button onClick={() => setEditingActa(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: '#f4f7fa', color: '#40b5fa' }}>
+                <Pencil className="w-3 h-3" />Editar
+              </button>
+            )}
+          </div>
         </div>
         {editingActa || !actaDraft.trim() ? (
           <textarea value={actaDraft} onChange={e => setActaDraft(e.target.value)} autoFocus={editingActa}
