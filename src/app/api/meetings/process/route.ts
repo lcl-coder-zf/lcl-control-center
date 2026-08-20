@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     await admin.from('meetings').update({
       summary: acta.summary,
       acta: acta.acta,
+      suggested_tasks: acta.actionItems ?? [],
       status: 'listo',
     }).eq('id', meetingId)
 
