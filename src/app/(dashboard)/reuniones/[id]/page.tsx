@@ -66,8 +66,17 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   async function startRecording() {
     setError(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
+      // Mono + supresión de ruido: mejor para voz y archivos más livianos.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      })
+      // Bitrate bajo (32 kbps): Whisper solo necesita voz, y así 1h de reunión
+      // pesa ~14 MB en vez de 40+ MB (evita el 413 de Groq por tamaño).
+      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+        .find(t => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t))
+      const mr = mime
+        ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 32000 })
+        : new MediaRecorder(stream)
       chunksRef.current = []
       mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = async () => {
