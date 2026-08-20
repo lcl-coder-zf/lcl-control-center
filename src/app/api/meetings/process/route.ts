@@ -26,6 +26,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const transcript = await transcribeAudio(meeting.audio_url)
+    // Guardar el transcript de una: si el acta falla después, no se pierde.
+    await admin.from('meetings').update({ transcript }).eq('id', meetingId)
 
     const attendees: string[] = (meeting.meeting_attendees ?? [])
       .map((a: AnyClient) => a.profiles?.full_name)
@@ -37,7 +39,6 @@ export async function POST(req: NextRequest) {
     })
 
     await admin.from('meetings').update({
-      transcript,
       summary: acta.summary,
       acta: acta.acta,
       status: 'listo',
@@ -45,7 +46,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, transcript, ...acta })
   } catch (err) {
-    await admin.from('meetings').update({ status: 'error' }).eq('id', meetingId)
+    // Si ya hay transcript guardado, dejar la reunión utilizable (acta a mano).
+    const { data: m } = await admin.from('meetings').select('transcript').eq('id', meetingId).single()
+    await admin.from('meetings').update({ status: m?.transcript ? 'listo' : 'error' }).eq('id', meetingId)
     const msg = err instanceof Error ? err.message : 'Error procesando la reunión'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
