@@ -231,7 +231,7 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   const segHechas = seguimiento.filter((t: Row) => t.status === 'completada').length
 
   return (
-    <div className="p-4 lg:p-8 max-w-3xl">
+    <div className="p-4 lg:p-8 max-w-4xl mx-auto">
       <Link href="/reuniones" className="inline-flex items-center gap-1.5 text-sm mb-4 hover:opacity-70 transition-opacity" style={{ color: '#6b8fa0' }}>
         <ArrowLeft className="w-4 h-4" />Reuniones
       </Link>
