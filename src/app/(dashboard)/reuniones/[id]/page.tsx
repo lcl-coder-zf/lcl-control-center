@@ -319,20 +319,22 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
           <p className="text-[11px] mb-4" style={{ color: '#86a2b2' }}>Ajusta responsable y fecha, y créalas como seguimiento.</p>
           <div className="space-y-2">
             {suggested.map((it, idx) => (
-              <div key={idx} className="flex flex-wrap items-center gap-2 rounded-xl p-2.5" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.06)' }}>
+              <div key={idx} className="rounded-xl p-3 space-y-2" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.06)' }}>
                 <input value={it.title} onChange={e => editSuggested(idx, { title: e.target.value })}
-                  className="flex-1 min-w-[160px] text-sm outline-none rounded-lg px-2.5 py-1.5" style={{ background: '#f4f7fa', color: '#1a2e3b' }} />
-                <select value={it.assignee} onChange={e => editSuggested(idx, { assignee: e.target.value })}
-                  className="text-xs outline-none rounded-lg px-2 py-1.5" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
-                  <option value="">Responsable…</option>
-                  {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-                </select>
-                <input type="date" value={it.due} onChange={e => editSuggested(idx, { due: e.target.value })}
-                  className="text-xs outline-none rounded-lg px-2 py-1.5" style={{ background: '#f4f7fa', color: '#6b8fa0' }} />
-                <button onClick={() => crearTarea(it, idx)}
-                  className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: '#8b5cf6', color: '#fff' }}>
-                  <Plus className="w-3 h-3" />Crear
-                </button>
+                  className="w-full text-sm outline-none rounded-lg px-3 py-2" style={{ background: '#f4f7fa', color: '#1a2e3b' }} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <select value={it.assignee} onChange={e => editSuggested(idx, { assignee: e.target.value })}
+                    className="text-xs outline-none rounded-lg px-2 py-1.5" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
+                    <option value="">Responsable…</option>
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                  </select>
+                  <input type="date" value={it.due} onChange={e => editSuggested(idx, { due: e.target.value })}
+                    className="text-xs outline-none rounded-lg px-2 py-1.5" style={{ background: '#f4f7fa', color: '#6b8fa0' }} />
+                  <button onClick={() => crearTarea(it, idx)}
+                    className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg ml-auto" style={{ background: '#8b5cf6', color: '#fff' }}>
+                    <Plus className="w-3 h-3" />Crear
+                  </button>
+                </div>
               </div>
             ))}
           </div>
