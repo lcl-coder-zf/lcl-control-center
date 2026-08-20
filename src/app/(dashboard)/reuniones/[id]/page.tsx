@@ -53,6 +53,7 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   const [seguimiento, setSeguimiento] = useState<Row[]>([])
   const [prev, setPrev] = useState<Row[]>([])
   const [profiles, setProfiles] = useState<Row[]>([])
+  const [companies, setCompanies] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
 
   // Audio
@@ -68,30 +69,35 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   const [editingActa, setEditingActa] = useState(false)
   const [savingActa, setSavingActa] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
-  const [suggested, setSuggested] = useState<{ title: string; assignee: string; due: string }[]>([])
+  const [suggested, setSuggested] = useState<{ title: string; assignees: string[]; companies: string[]; due: string }[]>([])
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [{ data: m }, { data: pf }] = await Promise.all([
+    const [{ data: m }, { data: pf }, { data: co }] = await Promise.all([
       supabase.from('meetings')
         .select('*, companies(name), meeting_attendees(profiles(id, full_name))')
         .eq('id', id).single(),
       supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
     ])
     const prof = pf ?? []
     setProfiles(prof)
+    setCompanies(co ?? [])
     setMeeting(m)
     setActaDraft(m?.acta ?? '')
     setAttendees((m?.meeting_attendees ?? []).map((a: Row) => a.profiles).filter(Boolean))
     // Tareas sugeridas persistidas en la reunión (sobreviven al refresh).
+    // Si la reunión tiene cliente, se preselecciona como default de cada tarea.
     setSuggested((m?.suggested_tasks ?? []).map((it: Row) => ({
       title: it.title,
-      assignee: prof.find((p: Row) => p.full_name === it.assignee)?.id ?? '',
+      assignees: prof.filter((p: Row) => p.full_name === it.assignee).map((p: Row) => p.id),
+      companies: m?.company_id ? [m.company_id] : [],
       due: '',
     })))
 
     const { data: tk } = await supabase.from('tasks')
-      .select('*, profiles!tasks_assigned_to_fkey(full_name)').eq('meeting_id', id).order('created_at')
+      .select('*, profiles!tasks_assigned_to_fkey(full_name), task_assignees(profiles(full_name)), task_companies(companies(name))')
+      .eq('meeting_id', id).order('created_at')
     setSeguimiento(tk ?? [])
 
     if (m?.series) {
@@ -181,36 +187,58 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   }
 
   // ── Crear tarea desde el acta (idea de Laura) ──────────────
-  async function crearTarea(item: { title: string; assignee: string; due: string }, idx: number) {
+  // Soporta varios asignados (task_assignees) y varios clientes (task_companies).
+  async function crearTarea(item: { title: string; assignees: string[]; companies: string[]; due: string }, idx: number) {
     if (!item.title.trim()) return
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('tasks').insert([{
+    const asignados = item.assignees.length ? item.assignees : (user?.id ? [user.id] : [])
+    const { data: task } = await supabase.from('tasks').insert([{
       title: item.title.trim(),
-      assigned_to: item.assignee || user?.id || null,
+      assigned_to: asignados[0] ?? null,
       due_date: item.due || meeting?.meeting_date || new Date().toISOString().slice(0, 10),
-      company_id: meeting?.company_id ?? null,
+      company_id: item.companies[0] ?? null,
       meeting_id: id,
       priority: 'media',
       status: 'pendiente',
       task_type: 'esporadica',
       recurrence_active: false,
       created_by: user?.id ?? null,
-    }])
+    }]).select().single()
+
+    if (task) {
+      if (asignados.length) {
+        await supabase.from('task_assignees').insert(asignados.map(pid => ({ task_id: task.id, profile_id: pid })))
+      }
+      if (item.companies.length) {
+        await supabase.from('task_companies').insert(item.companies.map(cid => ({ task_id: task.id, company_id: cid })))
+      }
+    }
+
     // Persistir la lista restante en la reunión para que no reaparezca al refrescar.
     const restantes = suggested.filter((_, i) => i !== idx)
     setSuggested(restantes)
     await supabase.from('meetings').update({
       suggested_tasks: restantes.map(s => ({
         title: s.title,
-        assignee: profiles.find((p: Row) => p.id === s.assignee)?.full_name ?? undefined,
+        assignee: profiles.find((p: Row) => p.id === s.assignees[0])?.full_name ?? undefined,
       })),
     }).eq('id', id)
     await load()
   }
 
-  function editSuggested(idx: number, patch: Partial<{ title: string; assignee: string; due: string }>) {
+  function editSuggested(idx: number, patch: Partial<{ title: string; assignees: string[]; companies: string[]; due: string }>) {
     setSuggested(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s))
+  }
+  function toggleSugAssignee(idx: number, pid: string) {
+    setSuggested(prev => prev.map((s, i) => i !== idx ? s : {
+      ...s, assignees: s.assignees.includes(pid) ? s.assignees.filter(x => x !== pid) : [...s.assignees, pid],
+    }))
+  }
+  function toggleSugCompany(idx: number, cid: string) {
+    setSuggested(prev => prev.map((s, i) => i !== idx ? s : {
+      ...s, companies: s.companies.includes(cid) ? s.companies.filter(x => x !== cid) : [...s.companies, cid],
+    }))
   }
 
   async function toggleSeguimiento(t: Row) {
@@ -319,20 +347,52 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
           <p className="text-[11px] mb-4" style={{ color: '#86a2b2' }}>Ajusta responsable y fecha, y créalas como seguimiento.</p>
           <div className="space-y-2">
             {suggested.map((it, idx) => (
-              <div key={idx} className="rounded-xl p-3 space-y-2" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.06)' }}>
+              <div key={idx} className="rounded-xl p-3.5 space-y-3" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.06)' }}>
                 <input value={it.title} onChange={e => editSuggested(idx, { title: e.target.value })}
-                  className="w-full text-sm outline-none rounded-lg px-3 py-2" style={{ background: '#f4f7fa', color: '#1a2e3b' }} />
-                <div className="flex flex-wrap items-center gap-2">
-                  <select value={it.assignee} onChange={e => editSuggested(idx, { assignee: e.target.value })}
-                    className="text-xs outline-none rounded-lg px-2 py-1.5" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
-                    <option value="">Responsable…</option>
-                    {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-                  </select>
+                  className="w-full text-sm font-medium outline-none rounded-lg px-3 py-2" style={{ background: '#f4f7fa', color: '#1a2e3b' }} />
+
+                {/* Responsables (varias personas) */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#86a2b2' }}>Responsables</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {profiles.map(p => {
+                      const on = it.assignees.includes(p.id)
+                      return (
+                        <button key={p.id} onClick={() => toggleSugAssignee(idx, p.id)}
+                          className="text-xs font-medium px-2.5 py-1 rounded-full transition-all"
+                          style={{ background: on ? 'rgba(64,181,250,0.12)' : '#f4f7fa', color: on ? '#40b5fa' : '#6b8fa0', border: `1px solid ${on ? 'rgba(64,181,250,0.4)' : 'rgba(0,40,80,0.08)'}` }}>
+                          {p.full_name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Clientes (una tarea puede servir a varios) */}
+                {companies.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#86a2b2' }}>Cliente(s)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {companies.map(c => {
+                        const on = it.companies.includes(c.id)
+                        return (
+                          <button key={c.id} onClick={() => toggleSugCompany(idx, c.id)}
+                            className="text-xs font-medium px-2.5 py-1 rounded-full transition-all"
+                            style={{ background: on ? 'rgba(52,211,153,0.12)' : '#f4f7fa', color: on ? '#059669' : '#6b8fa0', border: `1px solid ${on ? 'rgba(52,211,153,0.4)' : 'rgba(0,40,80,0.08)'}` }}>
+                            {c.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <input type="date" value={it.due} onChange={e => editSuggested(idx, { due: e.target.value })}
                     className="text-xs outline-none rounded-lg px-2 py-1.5" style={{ background: '#f4f7fa', color: '#6b8fa0' }} />
                   <button onClick={() => crearTarea(it, idx)}
-                    className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg ml-auto" style={{ background: '#8b5cf6', color: '#fff' }}>
-                    <Plus className="w-3 h-3" />Crear
+                    className="flex items-center gap-1 text-xs font-semibold px-4 py-1.5 rounded-lg ml-auto" style={{ background: '#8b5cf6', color: '#fff' }}>
+                    <Plus className="w-3 h-3" />Crear tarea
                   </button>
                 </div>
               </div>
@@ -414,7 +474,23 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
                     {done && <Check className="w-3 h-3" style={{ color: '#22c55e' }} />}
                   </button>
                   <span className="flex-1 text-sm truncate" style={{ color: '#1a2e3b', textDecoration: done ? 'line-through' : 'none', opacity: done ? 0.5 : 1 }}>{t.title}</span>
-                  {t.profiles?.full_name && <span className="text-[11px] px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#eef3f7', color: '#6b8fa0' }}>{t.profiles.full_name}</span>}
+                  {(() => {
+                    const nombres: string[] = (t.task_assignees ?? []).map((a: Row) => a.profiles?.full_name).filter(Boolean)
+                    const asignados = nombres.length ? nombres : (t.profiles?.full_name ? [t.profiles.full_name] : [])
+                    return asignados.length > 0 && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: '#eef3f7', color: '#6b8fa0' }}>
+                        {asignados.length === 1 ? asignados[0] : `${asignados[0]} +${asignados.length - 1}`}
+                      </span>
+                    )
+                  })()}
+                  {(() => {
+                    const clientes: string[] = (t.task_companies ?? []).map((c: Row) => c.companies?.name).filter(Boolean)
+                    return clientes.length > 0 && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1" style={{ background: 'rgba(52,211,153,0.1)', color: '#059669' }}>
+                        <Building2 className="w-3 h-3" />{clientes.length === 1 ? clientes[0] : `${clientes.length} clientes`}
+                      </span>
+                    )
+                  })()}
                   {t.due_date && <span className="text-[11px] flex-shrink-0" style={{ color: '#86a2b2' }}>{formatDate(t.due_date)}</span>}
                 </div>
               )
