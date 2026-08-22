@@ -92,6 +92,31 @@ export function taskCompanyLabel(t: any): string {
   return taskCompanyNames(t).join(' · ')
 }
 
+// ── Estado "vencida": DERIVADO, no guardado ───────────────────────────────
+// Nada en la BD escribe status='vencida' (el cron solo manda push). Antes el
+// KPI y el filtro comparaban status==='vencida' → nunca cuadraban y la tarea
+// vencida caía en "pendiente". Estos helpers derivan lo vencido desde la fecha
+// para que KPI, filtro y lista digan siempre lo mismo, corra o no el cron.
+
+function hoyStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isOverdue(t: any): boolean {
+  if (!t || t.task_type === 'recurrente') return false          // las recurrentes no vencen
+  if (t.status === 'completada' || t.status === 'cancelada') return false
+  if (!t.due_date) return false
+  return String(t.due_date).slice(0, 10) < hoyStr()             // estrictamente antes de hoy
+}
+
+// Estado que ve el usuario: 'vencida' es derivado; el resto es el status real.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function effectiveStatus(t: any): string {
+  return isOverdue(t) ? 'vencida' : t?.status
+}
+
 // Parseo seguro de un 'date' (YYYY-MM-DD) al mediodía local para evitar corrimientos de zona horaria.
 function parseLocal(dateStr: string): Date {
   return new Date(dateStr + 'T12:00:00')

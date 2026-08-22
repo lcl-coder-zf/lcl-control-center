@@ -11,7 +11,7 @@ import { pushNotify } from '@/lib/push-client'
 import {
   regenerateIfRecurring, RECURRENCE_CONFIG, RECURRENCE_OPTIONS, type Recurrence,
   AVISO_OPCIONES, avisoLabel, taskCompanyNames, taskCompanyIds,
-  WEEKDAYS, firstWeeklyDate, weekdaysLabel,
+  WEEKDAYS, firstWeeklyDate, weekdaysLabel, isOverdue,
 } from '@/lib/tasks'
 
 function ProgressRing({ done, total, inProgress }: { done: number; total: number; inProgress?: boolean }) {
@@ -212,7 +212,8 @@ export default function TareasList({
           const days = daysUntil(t.due_date)
           const isRecurrente = t.task_type === 'recurrente'
           // Las recurrentes no vencen: su fecha es solo la próxima ocurrencia.
-          const isVencida = !isRecurrente && (t.status === 'vencida' || (days < 0 && t.status !== 'completada'))
+          // "Vencida" es derivado de la fecha (helper único compartido con el KPI/filtro).
+          const isVencida = isOverdue(t)
           const isUrgente = !isRecurrente && days <= 2 && days >= 0 && t.status !== 'completada'
           const isCompleta = t.status === 'completada'
           const isEnProgreso = t.status === 'en_progreso'
