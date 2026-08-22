@@ -69,7 +69,23 @@ if (APPLY && filas.length) {
   const emailsNuevos = filas.map(f => f.email)
   await admin.from('usuarios_sistema').delete().in('email', [...emailsViejos, ...emailsNuevos])
   const { error } = await admin.from('usuarios_sistema').insert(filas)
-  if (error) { console.error('❌ insert:', error.message); process.exit(1) }
-  console.log(`\n✅ Vault de LCL Center sincronizado: ${filas.length} logins.`)
+  if (error) { console.error('❌ insert usuarios_sistema:', error.message); process.exit(1) }
+  console.log(`\n✅ usuarios_sistema (registro interno): ${filas.length} logins.`)
+
+  // También los agrega al Vault de contraseñas visible en /vault (tabla
+  // vault_items), como entradas de categoría 'software'. Idempotente: borra
+  // las suyas por nombre antes de reinsertar.
+  const vaultRows = filas.map(f => ({
+    nombre: `LCL Center (app) — ${f.nombre}`,
+    usuario: f.email,
+    contrasena: f.pass,
+    url: 'https://app.lclgestionempresarial.com',
+    notas: 'Login a LCL Control Center',
+    categoria: 'software',
+  }))
+  await admin.from('vault_items').delete().in('nombre', vaultRows.map(r => r.nombre))
+  const { error: eV } = await admin.from('vault_items').insert(vaultRows)
+  if (eV) console.error('⚠️ vault_items:', eV.message)
+  else console.log(`✅ Vault de contraseñas (/vault): ${vaultRows.length} logins agregados.`)
 }
 console.log(`\n${APPLY ? 'Listo.' : 'Corre con --apply para aplicar.'}\n`)
