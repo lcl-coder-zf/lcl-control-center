@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   CheckSquare, Clock, AlertTriangle, Check, Loader2, RefreshCw,
-  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil, Building2, BellRing, GripVertical, CircleDot,
+  ChevronDown, Plus, X, CornerDownRight, Trash2, Pencil, Building2, BellRing, GripVertical, Play, Pause,
 } from 'lucide-react'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -173,6 +173,19 @@ export default function TareasList({
       status: newStatus,
       completed_at: newStatus === 'completada' ? new Date().toISOString() : null,
     }).eq('id', sub.id)
+
+    // Auto "en progreso": si el padre estaba pendiente y ahora hay avance
+    // parcial (algunas subtareas hechas, no todas), pasa a en_progreso; si
+    // vuelve a cero avance, regresa a pendiente. No auto-completa el padre.
+    const parent = tasks.find(t => t.id === sub.parent_id)
+    if (parent && parent.status !== 'completada') {
+      const siblings = getSubtasks(parent.id)
+      const done = siblings.filter(s => s.id === sub.id ? newStatus === 'completada' : s.status === 'completada').length
+      let target = parent.status
+      if (done > 0 && done < siblings.length && parent.status === 'pendiente') target = 'en_progreso'
+      else if (done === 0 && parent.status === 'en_progreso') target = 'pendiente'
+      if (target !== parent.status) await supabase.from('tasks').update({ status: target }).eq('id', parent.id)
+    }
     onRefresh?.()
   }
 
@@ -303,25 +316,36 @@ export default function TareasList({
                     style={{ background: pr.bg, color: pr.color }}>
                     {pr.label}
                   </span>
-                  <div className="flex items-center gap-1 text-xs"
-                    style={{ color: isVencida ? '#ff6b6b' : isEnProgreso ? '#a78bfa' : isUrgente ? '#ffd93d' : '#86a2b2' }}>
-                    {isVencida
-                      ? <><AlertTriangle className="w-3 h-3" />{Math.abs(days)}d vencida</>
-                      : isCompleta
-                        ? <span style={{ color: '#4ade80' }}>Completada</span>
-                        : isEnProgreso
-                          ? <><CircleDot className="w-3 h-3" />En progreso</>
+                  {isEnProgreso ? (
+                    <span className="text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1.5"
+                      style={{ background: 'rgba(167,139,250,0.14)', color: '#7c5cf5', border: '1px solid rgba(167,139,250,0.35)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#7c5cf5' }} />
+                      En progreso
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1 text-xs"
+                      style={{ color: isVencida ? '#ff6b6b' : isUrgente ? '#ffd93d' : '#86a2b2' }}>
+                      {isVencida
+                        ? <><AlertTriangle className="w-3 h-3" />{Math.abs(days)}d vencida</>
+                        : isCompleta
+                          ? <span style={{ color: '#4ade80' }}>Completada</span>
                           : isRecurrente
                             ? <><RefreshCw className="w-3 h-3" />Próx: {formatDate(t.due_date)}</>
                             : <><Clock className="w-3 h-3" />{days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>
-                    }
-                  </div>
+                      }
+                    </div>
+                  )}
                   {!isCompleta && (
                     <button onClick={() => toggleProgress(t)} disabled={completing === t.id}
-                      title={isEnProgreso ? 'Quitar de en progreso' : 'Poner en progreso'}
-                      className="p-1 rounded-lg transition-opacity"
-                      style={{ color: '#a78bfa', opacity: isEnProgreso ? 1 : 0.4 }}>
-                      <CircleDot className="w-4 h-4" />
+                      title={isEnProgreso ? 'Pausar (volver a pendiente)' : 'Marcar en progreso'}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all"
+                      style={{
+                        background: isEnProgreso ? 'rgba(167,139,250,0.12)' : '#f4f7fa',
+                        color: isEnProgreso ? '#7c5cf5' : '#6b8fa0',
+                        border: `1px solid ${isEnProgreso ? 'rgba(167,139,250,0.3)' : 'rgba(0,40,80,0.08)'}`,
+                      }}>
+                      {isEnProgreso ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                      <span className="hidden sm:inline">{isEnProgreso ? 'Pausar' : 'Iniciar'}</span>
                     </button>
                   )}
                   <button onClick={() => setEditingTask(t)} title="Editar tarea"
