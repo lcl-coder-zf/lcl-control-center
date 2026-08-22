@@ -2,11 +2,25 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import { Plus, RefreshCw, ListChecks, CalendarClock } from 'lucide-react'
+import { Plus, RefreshCw, ListChecks, CalendarClock, Search, ArrowDownUp, X } from 'lucide-react'
 import TareasList from './TareasList'
 import FechasClave from './FechasClave'
 import { createClient } from '@/lib/supabase/client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
+import { effectiveStatus, taskCompanyNames } from '@/lib/tasks'
+
+// Orden de la lista. Por defecto la última agregada primero.
+const SORT_OPTIONS = [
+  { id: 'reciente',  label: 'Última agregada' },
+  { id: 'antigua',   label: 'Primera agregada' },
+  { id: 'vence_asc', label: 'Vence primero' },
+  { id: 'vence_desc',label: 'Vence después' },
+  { id: 'prioridad', label: 'Prioridad' },
+  { id: 'alfabetico',label: 'Alfabético (A–Z)' },
+] as const
+type SortId = typeof SORT_OPTIONS[number]['id']
+
+const PRIORITY_ORDER: Record<string, number> = { critica: 0, alta: 1, media: 2, baja: 3 }
 
 export default function TareasPage() {
   const [tasks, setTasks] = useState<any[]>([])
@@ -18,6 +32,8 @@ export default function TareasPage() {
   const [prioridad, setPrioridad] = useState('todas')
   const [asignado, setAsignado] = useState('todas')
   const [tipo, setTipo] = useState('todas')
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<SortId>('reciente')
   const [vista, setVista] = useState<'lista' | 'fechas'>('lista')
   const [role, setRole] = useState<string>('consultant')
   const [myId, setMyId] = useState<string | null>(null)
@@ -78,22 +94,42 @@ export default function TareasPage() {
   )
 
   const filtered = useMemo(() => {
-    return scoped.filter(t => {
-      const matchStatus = status === 'todas' || t.status === status
+    const q = search.trim().toLowerCase()
+    const rows = scoped.filter(t => {
+      // "vencida" es derivado de la fecha (nada lo guarda en BD), así que el
+      // filtro compara contra el estado efectivo, no contra t.status.
+      const matchStatus = status === 'todas' || effectiveStatus(t) === status
       const matchPrioridad = prioridad === 'todas' || t.priority === prioridad
       const matchAsignado = asignado === 'todas'
         || t.assigned_to === asignado
         || (t.task_assignees ?? []).some((a: any) => a.profile_id === asignado)
       const matchTipo = tipo === 'todas' || (tipo === 'recurrente' ? t.task_type === 'recurrente' : t.task_type !== 'recurrente')
-      return matchStatus && matchPrioridad && matchAsignado && matchTipo
+      const matchSearch = !q
+        || (t.title ?? '').toLowerCase().includes(q)
+        || (t.description ?? '').toLowerCase().includes(q)
+        || taskCompanyNames(t).join(' ').toLowerCase().includes(q)
+      return matchStatus && matchPrioridad && matchAsignado && matchTipo && matchSearch
     })
-  }, [scoped, status, prioridad, asignado, tipo])
+
+    const dir = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+    return [...rows].sort((a, b) => {
+      switch (sort) {
+        case 'antigua':    return dir(a.created_at ?? '', b.created_at ?? '')
+        case 'vence_asc':  return dir(a.due_date ?? '9999', b.due_date ?? '9999')
+        case 'vence_desc': return dir(b.due_date ?? '', a.due_date ?? '')
+        case 'prioridad':  return (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9)
+        case 'alfabetico': return dir((a.title ?? '').toLowerCase(), (b.title ?? '').toLowerCase())
+        case 'reciente':
+        default:           return dir(b.created_at ?? '', a.created_at ?? '')
+      }
+    })
+  }, [scoped, status, prioridad, asignado, tipo, search, sort])
 
   const counts = {
-    pendiente:   scoped.filter(t => t.status === 'pendiente').length,
-    en_progreso: scoped.filter(t => t.status === 'en_progreso').length,
-    vencida:     scoped.filter(t => t.status === 'vencida' && t.task_type !== 'recurrente').length,
-    completada:  scoped.filter(t => t.status === 'completada').length,
+    pendiente:   scoped.filter(t => effectiveStatus(t) === 'pendiente').length,
+    en_progreso: scoped.filter(t => effectiveStatus(t) === 'en_progreso').length,
+    vencida:     scoped.filter(t => effectiveStatus(t) === 'vencida').length,
+    completada:  scoped.filter(t => effectiveStatus(t) === 'completada').length,
   }
 
   const pColors: Record<string, string> = { critica: '#ff6b6b', alta: '#fb923c', media: '#ffd93d', baja: '#4ade80' }
@@ -165,6 +201,31 @@ export default function TareasPage() {
             <div className="text-[10px] uppercase tracking-wider mt-0.5" style={{ color: '#6b8fa0' }}>{s.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* Búsqueda + orden */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <div className="flex items-center flex-1 gap-2 rounded-xl px-3.5 py-2.5"
+          style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.10)' }}>
+          <Search className="w-4 h-4 flex-shrink-0" style={{ color: '#86a2b2' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar tarea por título, descripción o cliente…"
+            className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1a2e3b' }} />
+          {search && (
+            <button onClick={() => setSearch('')} title="Limpiar búsqueda"
+              className="p-0.5 rounded opacity-50 hover:opacity-100 transition-opacity" style={{ color: '#6b8fa0' }}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+          style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)' }}>
+          <ArrowDownUp className="w-4 h-4 flex-shrink-0" style={{ color: '#86a2b2' }} />
+          <select value={sort} onChange={e => setSort(e.target.value as SortId)}
+            className="text-sm outline-none bg-transparent font-medium cursor-pointer" style={{ color: '#1a2e3b' }}>
+            {SORT_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
