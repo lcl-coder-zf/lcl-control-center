@@ -2,12 +2,20 @@
 // un string libre. 'admin' y 'consultant' son los dos roles de sistema.
 export type UserRole = string
 
+// Cargos por email. Se mantienen las claves viejas (@lcl.com) y las nuevas
+// corporativas (@lclgestionempresarial.com) para que el título funcione antes
+// y después de migrar los correos, sin ventana rota.
 export const ROLE_LABELS: Record<string, string> = {
   'daniel@lcl.com': 'Desarrollador',
   'laura@lcl.com':  'Directora de Proyectos',
   'camila@lcl.com': 'Analista de Proyectos',
   'ximena@lcl.com': 'Analista de Proyectos',
   'isabel@lcl.com': 'Consultora',
+  'daniel.llano@lclgestionempresarial.com':  'Desarrollador',
+  'laura.llano@lclgestionempresarial.com':   'Directora de Proyectos',
+  'camila.lopez@lclgestionempresarial.com':  'Analista de Proyectos',
+  'ximena.vega@lclgestionempresarial.com':   'Analista de Proyectos',
+  'isabel.llano@lclgestionempresarial.com':  'Consultora',
 }
 
 export interface RolApp {
