@@ -174,17 +174,29 @@ export default function TareasList({
       completed_at: newStatus === 'completada' ? new Date().toISOString() : null,
     }).eq('id', sub.id)
 
-    // Auto "en progreso": si el padre estaba pendiente y ahora hay avance
-    // parcial (algunas subtareas hechas, no todas), pasa a en_progreso; si
-    // vuelve a cero avance, regresa a pendiente. No auto-completa el padre.
+    // El estado del padre sigue el avance de sus subtareas:
+    //   todas hechas → completada (auto) · algunas → en progreso · ninguna → pendiente.
     const parent = tasks.find(t => t.id === sub.parent_id)
-    if (parent && parent.status !== 'completada') {
+    if (parent) {
       const siblings = getSubtasks(parent.id)
+      const total = siblings.length
       const done = siblings.filter(s => s.id === sub.id ? newStatus === 'completada' : s.status === 'completada').length
-      let target = parent.status
-      if (done > 0 && done < siblings.length && parent.status === 'pendiente') target = 'en_progreso'
-      else if (done === 0 && parent.status === 'en_progreso') target = 'pendiente'
-      if (target !== parent.status) await supabase.from('tasks').update({ status: target }).eq('id', parent.id)
+      const target = total > 0 && done === total ? 'completada' : done > 0 ? 'en_progreso' : 'pendiente'
+      if (target !== parent.status) {
+        if (target === 'completada') {
+          // Mismo camino que completar a mano: cierra, regenera si es recurrente y avisa.
+          await supabase.from('tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', parent.id)
+          await regenerateIfRecurring(supabase, parent)
+          await pushNotify(supabase, {
+            title: '✅ Tarea completada',
+            body: `"${parent.title}" — todas las subtareas listas`,
+            url: '/tareas',
+            toAdmins: true,
+          })
+        } else {
+          await supabase.from('tasks').update({ status: target, completed_at: null }).eq('id', parent.id)
+        }
+      }
     }
     onRefresh?.()
   }
