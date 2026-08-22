@@ -2,12 +2,30 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import { Plus, RefreshCw, ListChecks, CalendarClock, Search, ArrowDownUp, X } from 'lucide-react'
+import { Plus, RefreshCw, ListChecks, CalendarClock, Search, ArrowDownUp, X, Clock, AlertTriangle, Check, RefreshCw as RefreshIcon, ArrowRight } from 'lucide-react'
 import TareasList from './TareasList'
 import FechasClave from './FechasClave'
 import { createClient } from '@/lib/supabase/client'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { effectiveStatus, taskCompanyNames } from '@/lib/tasks'
+import { formatDate, daysUntil } from '@/lib/utils'
+
+// Config visual de cada KPI/estado (para las tarjetas y el panel lateral).
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pendiente:   { label: 'Pendientes',  color: '#40b5fa', bg: 'rgba(64,181,250,0.10)' },
+  en_progreso: { label: 'En progreso', color: '#7c5cf5', bg: 'rgba(167,139,250,0.14)' },
+  vencida:     { label: 'Vencidas',    color: '#ff6b6b', bg: 'rgba(255,107,107,0.10)' },
+  completada:  { label: 'Completadas', color: '#4ade80', bg: 'rgba(74,222,128,0.10)' },
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function assigneeNamesOf(t: any): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fromJunction = (t.task_assignees ?? []).map((a: any) => a.profiles?.full_name).filter(Boolean)
+  if (fromJunction.length > 0) return fromJunction
+  if (t.profiles?.full_name) return [t.profiles.full_name]
+  return []
+}
 
 // Orden de la lista. Por defecto la última agregada primero.
 const SORT_OPTIONS = [
@@ -34,6 +52,7 @@ export default function TareasPage() {
   const [tipo, setTipo] = useState('todas')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortId>('reciente')
+  const [peek, setPeek] = useState<string | null>(null)   // KPI abierto en el panel lateral
   const [vista, setVista] = useState<'lista' | 'fechas'>('lista')
   const [role, setRole] = useState<string>('consultant')
   const [myId, setMyId] = useState<string | null>(null)
@@ -190,17 +209,27 @@ export default function TareasPage() {
       <>
       <div className="grid grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Pendientes', value: counts.pendiente, color: '#40b5fa' },
-          { label: 'En progreso', value: counts.en_progreso, color: '#a78bfa' },
-          { label: 'Vencidas', value: counts.vencida, color: '#ff6b6b' },
-          { label: 'Completadas', value: counts.completada, color: '#4ade80' },
-        ].map(s => (
-          <div key={s.label} className="rounded-xl px-3 py-3 text-center"
-            style={{ background: '#ffffff', border: '1px solid rgba(0,40,80,0.08)' }}>
-            <div className="text-2xl font-black" style={{ color: s.color }}>{s.value}</div>
-            <div className="text-[10px] uppercase tracking-wider mt-0.5" style={{ color: '#6b8fa0' }}>{s.label}</div>
-          </div>
-        ))}
+          { key: 'pendiente',   value: counts.pendiente },
+          { key: 'en_progreso', value: counts.en_progreso },
+          { key: 'vencida',     value: counts.vencida },
+          { key: 'completada',  value: counts.completada },
+        ].map(s => {
+          const m = STATUS_META[s.key]
+          const active = peek === s.key
+          return (
+            <button key={s.key} onClick={() => setPeek(active ? null : s.key)}
+              className="rounded-xl px-3 py-3 text-center transition-all hover:-translate-y-0.5"
+              style={{
+                background: active ? m.bg : '#ffffff',
+                border: `1px solid ${active ? m.color + '55' : 'rgba(0,40,80,0.08)'}`,
+                boxShadow: active ? `0 4px 14px ${m.color}22` : 'none',
+                cursor: 'pointer',
+              }}>
+              <div className="text-2xl font-black" style={{ color: m.color }}>{s.value}</div>
+              <div className="text-[10px] uppercase tracking-wider mt-0.5" style={{ color: '#6b8fa0' }}>{m.label}</div>
+            </button>
+          )
+        })}
       </div>
 
       {/* Búsqueda + orden */}
@@ -305,6 +334,100 @@ export default function TareasPage() {
       />
       </>
       )}
+
+      {peek && (
+        <KpiPeek
+          statusKey={peek}
+          tasks={scoped.filter(t => effectiveStatus(t) === peek)}
+          onClose={() => setPeek(null)}
+          onGoToList={() => { setStatus(peek); setVista('lista'); setPeek(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Panel lateral tipo Notion: se abre a la derecha al tocar un KPI y lista
+// las tareas de ese estado. Solo lectura + atajo para verlas en la lista.
+function KpiPeek({
+  statusKey, tasks, onClose, onGoToList,
+}: {
+  statusKey: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tasks: any[]
+  onClose: () => void
+  onGoToList: () => void
+}) {
+  const m = STATUS_META[statusKey]
+  const ordenadas = [...tasks].sort((a, b) => (a.due_date ?? '9999') < (b.due_date ?? '9999') ? -1 : 1)
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-fade-in" onClick={onClose} />
+      <div className="relative h-full w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-right">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#eef2f7' }}>
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: m.color }} />
+            <h2 className="font-bold text-base" style={{ color: '#1a2e3b' }}>{m.label}</h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: m.bg, color: m.color }}>
+              {tasks.length}
+            </span>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+            style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Lista */}
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5">
+          {ordenadas.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Check className="w-10 h-10 mb-3" style={{ color: '#cfd9e3' }} />
+              <p className="text-sm font-medium" style={{ color: '#6b8fa0' }}>Nada por acá</p>
+            </div>
+          ) : ordenadas.map(t => {
+            const clientes = taskCompanyNames(t)
+            const asignados = assigneeNamesOf(t)
+            const days = t.due_date ? daysUntil(t.due_date) : 0
+            const isRec = t.task_type === 'recurrente'
+            return (
+              <div key={t.id} className="rounded-xl px-3.5 py-3 transition-colors"
+                style={{ background: '#fafbfc', border: '1px solid rgba(0,40,80,0.06)' }}>
+                <p className="text-sm font-medium mb-1" style={{ color: '#1a2e3b' }}>{t.title}</p>
+                <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: '#6b8fa0' }}>
+                  {clientes.length > 0 && <span>{clientes.length === 1 ? clientes[0] : `${clientes.length} clientes`}</span>}
+                  {asignados.length > 0 && <span>· {asignados.length === 1 ? asignados[0] : `${asignados[0]} +${asignados.length - 1}`}</span>}
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5 text-xs font-medium" style={{ color: m.color }}>
+                  {statusKey === 'vencida'
+                    ? <><AlertTriangle className="w-3 h-3" />{Math.abs(days)}d vencida</>
+                    : statusKey === 'completada'
+                      ? <><Check className="w-3 h-3" />Completada</>
+                      : statusKey === 'en_progreso'
+                        ? <><span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: m.color }} />En progreso</>
+                        : isRec
+                          ? <><RefreshIcon className="w-3 h-3" />Próx: {formatDate(t.due_date)}</>
+                          : <><Clock className="w-3 h-3" />{days === 0 ? 'Hoy' : days === 1 ? 'Mañana' : formatDate(t.due_date)}</>
+                  }
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        {ordenadas.length > 0 && (
+          <div className="px-4 py-3 border-t" style={{ borderColor: '#eef2f7' }}>
+            <button onClick={onGoToList}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+              style={{ background: m.bg, color: m.color }}>
+              Ver en la lista <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
