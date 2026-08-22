@@ -2,10 +2,13 @@
 // El UID no cambia → tareas/asignaciones intactas. Actualiza auth.users
 // (con email_confirm para no pedir reconfirmación) y profiles.email.
 //
-// Uso:
-//   node --env-file=.env.local scripts/migrar-correos.mjs          (DRY RUN, no cambia nada)
-//   node --env-file=.env.local scripts/migrar-correos.mjs --apply  (aplica los cambios)
+// Uso (más simple — te pide las llaves de Supabase y las pegas):
+//   node scripts/migrar-correos.mjs          (DRY RUN, no cambia nada)
+//   node scripts/migrar-correos.mjs --apply  (aplica los cambios)
+// Las llaves están en Supabase → Settings → API (Project URL + service_role).
 import { createClient } from '@supabase/supabase-js'
+import readline from 'node:readline/promises'
+import { stdin as input, stdout as output } from 'node:process'
 
 const MAP = {
   'andrea@lcl.com': 'andrea.berrio@lclgestionempresarial.com',
@@ -17,9 +20,18 @@ const MAP = {
 }
 
 const APPLY = process.argv.includes('--apply')
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-if (!url || !key) { console.error('❌ Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY'); process.exit(1) }
+
+// Toma las llaves del entorno; si faltan, las pide por consola (pegar y Enter).
+let url = process.env.NEXT_PUBLIC_SUPABASE_URL
+let key = process.env.SUPABASE_SERVICE_ROLE_KEY
+if (!url || !key) {
+  const rl = readline.createInterface({ input, output })
+  console.log('\nPega las llaves de Supabase (Settings → API):')
+  if (!url) url = (await rl.question('  Project URL: ')).trim()
+  if (!key) key = (await rl.question('  service_role key: ')).trim()
+  rl.close()
+}
+if (!url || !key) { console.error('❌ Faltan el Project URL o el service_role key'); process.exit(1) }
 
 const admin = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
 
