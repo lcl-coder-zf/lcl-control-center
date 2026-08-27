@@ -4,9 +4,9 @@ import NuevaTareaForm from './NuevaTareaForm'
 export default async function NuevaTareaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cliente?: string }>
+  searchParams: Promise<{ cliente?: string; titulo?: string }>
 }) {
-  const { cliente } = await searchParams
+  const { cliente, titulo } = await searchParams
   const supabase = await createClient()
 
   const [{ data: companies }, { data: profiles }, { data: user }] = await Promise.all([
@@ -23,6 +23,7 @@ export default async function NuevaTareaPage({
       companies={companies ?? []}
       profiles={profiles ?? []}
       defaultClienteId={cliente}
+      defaultTitulo={titulo}
       currentUserId={currentProfile?.id}
     />
   )

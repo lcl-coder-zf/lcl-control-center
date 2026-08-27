@@ -13,10 +13,11 @@ interface Props {
   companies: { id: string; name: string }[]
   profiles: { id: string; full_name: string }[]
   defaultClienteId?: string
+  defaultTitulo?: string
   currentUserId?: string
 }
 
-export default function NuevaTareaForm({ companies, profiles, defaultClienteId, currentUserId }: Props) {
+export default function NuevaTareaForm({ companies, profiles, defaultClienteId, defaultTitulo, currentUserId }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -28,8 +29,9 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
   )
   const [weekdays, setWeekdays] = useState<Set<number>>(new Set())
   const [form, setForm] = useState({
-    title: '',
+    title: defaultTitulo ?? '',
     description: '',
+    comentarios: '',
     priority: 'media',
     status: 'pendiente',
     due_date: '',
@@ -94,6 +96,7 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     const { data: task, error: insertErr } = await supabase.from('tasks').insert([{
       title: form.title,
       description: form.description || null,
+      comentarios: form.comentarios || null,
       // El primero queda como cliente principal; la lista completa va en task_companies.
       company_id: companyArr[0] ?? null,
       assigned_to: assignedArr[0],
@@ -172,6 +175,15 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
             </label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)}
               rows={2} placeholder="Detalles adicionales..."
+              className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
+              style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold tracking-wide uppercase mb-1.5" style={{ color: '#6b8fa0' }}>
+              Comentarios / notas <span style={{ textTransform: 'none', fontWeight: 400 }}>(opcional)</span>
+            </label>
+            <textarea value={form.comentarios} onChange={e => set('comentarios', e.target.value)}
+              rows={2} placeholder="Algo que quede pendiente, un apunte, contexto…"
               className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
               style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
           </div>
