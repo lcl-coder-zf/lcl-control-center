@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Building2, CheckSquare,
-  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings, Users, CalendarRange, Mic,
+  CalendarClock, LogOut, ChevronRight, X, ChevronLeft, KeyRound, Settings, Users, CalendarRange, Mic, Lightbulb,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { puedeVerModulo } from '@/lib/modulos'
@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',     module: null },
   { href: '/clientes',      icon: Building2,       label: 'Clientes',      module: 'clientes' },
   { href: '/tareas',        icon: CheckSquare,     label: 'Tareas',        module: 'tareas' },
+  { href: '/ideas',         icon: Lightbulb,       label: 'Ideas',         module: 'ideas' },
   { href: '/agenda',        icon: CalendarClock,   label: 'Agenda',        module: 'agenda' },
   { href: '/reuniones',     icon: Mic,             label: 'Reuniones',     module: 'reuniones' },
   { href: '/cronograma',    icon: CalendarRange,   label: 'Cronograma',    module: 'cronograma' },
