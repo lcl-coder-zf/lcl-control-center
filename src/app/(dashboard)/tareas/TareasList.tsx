@@ -120,13 +120,36 @@ export default function TareasList({
     onRefresh?.()
   }
 
-  async function saveComentario(taskId: string, value: string) {
+  // Agrega un comentario al hilo de la tarea, sellado con autor y fecha.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function addComentario(task: any, texto: string) {
+    const t = texto.trim()
+    if (!t) return
     setSavingComent(true)
     const supabase = createClient()
-    await supabase.from('tasks').update({ comentarios: value.trim() || null }).eq('id', taskId)
+    const { data: { user } } = await supabase.auth.getUser()
+    const autor = profiles.find(p => p.id === user?.id)?.full_name ?? 'Alguien'
+    const entry = { id: crypto.randomUUID(), texto: t, autor, autor_id: user?.id ?? null, fecha: new Date().toISOString() }
+    const prev = Array.isArray(task.comentarios_log) ? task.comentarios_log : []
+    await supabase.from('tasks').update({ comentarios_log: [...prev, entry] }).eq('id', task.id)
     setSavingComent(false)
     setComentEdit(null)
     onRefresh?.()
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function deleteComentario(task: any, id: string) {
+    const supabase = createClient()
+    const prev = Array.isArray(task.comentarios_log) ? task.comentarios_log : []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await supabase.from('tasks').update({ comentarios_log: prev.filter((c: any) => c.id !== id) }).eq('id', task.id)
+    onRefresh?.()
+  }
+
+  function fmtComentFecha(iso: string): string {
+    try {
+      return new Date(iso).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })
+    } catch { return '' }
   }
 
   function toggleExpand(id: string) {
@@ -393,42 +416,60 @@ export default function TareasList({
                       : <p className="text-sm italic" style={{ color: '#b0bcc7' }}>Sin descripción</p>}
                   </div>
 
-                  {/* Comentarios / notas — apuntar lo que quede pendiente antes de cerrar la tarea */}
-                  <div className="mb-3 ml-11">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1" style={{ color: '#86a2b2' }}>
-                        <MessageSquare className="w-3 h-3" /> Comentarios / notas
-                      </p>
-                      {comentEdit?.id !== t.id && (
-                        <button onClick={() => setComentEdit({ id: t.id, value: t.comentarios ?? '' })}
-                          className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-lg"
-                          style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>
-                          <Pencil className="w-3 h-3" />{t.comentarios ? 'Editar' : 'Agregar'}
-                        </button>
-                      )}
-                    </div>
-                    {comentEdit?.id === t.id ? (
-                      <div>
-                        <textarea autoFocus value={comentEdit!.value}
-                          onChange={e => setComentEdit({ id: t.id, value: e.target.value })}
-                          rows={2} placeholder="Algo que quedó pendiente, un apunte…"
-                          className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
-                          style={{ background: '#f4f7fa', border: '1px solid rgba(64,181,250,0.35)', color: '#1a2e3b' }} />
-                        <div className="flex justify-end gap-2 mt-2">
-                          <button onClick={() => setComentEdit(null)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>Cancelar</button>
-                          <button onClick={() => saveComentario(t.id, comentEdit!.value)} disabled={savingComent}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: '#40b5fa' }}>
-                            {savingComent ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Guardar
+                  {/* Comentarios / notas — hilo con autor y fecha (apuntar lo pendiente antes de cerrar) */}
+                  {(() => {
+                    const log: { id: string; texto: string; autor: string | null; fecha: string }[] =
+                      Array.isArray(t.comentarios_log) ? t.comentarios_log : []
+                    return (
+                      <div className="mb-3 ml-11">
+                        <p className="text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1 mb-1.5" style={{ color: '#86a2b2' }}>
+                          <MessageSquare className="w-3 h-3" /> Comentarios / notas {log.length > 0 && `· ${log.length}`}
+                        </p>
+                        {log.length > 0 && (
+                          <div className="space-y-1.5 mb-2">
+                            {log.map(c => (
+                              <div key={c.id} className="rounded-xl px-3 py-2 group"
+                                style={{ background: 'rgba(255,217,61,0.08)', border: '1px solid rgba(255,217,61,0.25)' }}>
+                                <p className="text-sm whitespace-pre-wrap" style={{ color: '#4a5a6b' }}>{c.texto}</p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-[11px] font-medium" style={{ color: '#86a2b2' }}>
+                                    {c.autor ?? 'Alguien'} · {fmtComentFecha(c.fecha)}
+                                  </span>
+                                  <button onClick={() => deleteComentario(t, c.id)} title="Eliminar comentario"
+                                    className="p-0.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity" style={{ color: '#ff6b6b' }}>
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {comentEdit?.id === t.id ? (
+                          <div>
+                            <textarea autoFocus value={comentEdit!.value}
+                              onChange={e => setComentEdit({ id: t.id, value: e.target.value })}
+                              rows={2} placeholder="Escribe un comentario o nota…"
+                              className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
+                              style={{ background: '#f4f7fa', border: '1px solid rgba(64,181,250,0.35)', color: '#1a2e3b' }} />
+                            <div className="flex justify-end gap-2 mt-2">
+                              <button onClick={() => setComentEdit(null)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>Cancelar</button>
+                              <button onClick={() => addComentario(t, comentEdit!.value)} disabled={savingComent || !comentEdit!.value.trim()}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: '#40b5fa' }}>
+                                {savingComent ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Comentar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setComentEdit({ id: t.id, value: '' })}
+                            className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg"
+                            style={{ background: 'rgba(64,181,250,0.10)', color: '#40b5fa' }}>
+                            <Plus className="w-3 h-3" /> Agregar comentario
                           </button>
-                        </div>
+                        )}
                       </div>
-                    ) : (
-                      t.comentarios
-                        ? <p className="text-sm whitespace-pre-wrap rounded-xl px-3 py-2" style={{ color: '#4a5a6b', background: 'rgba(255,217,61,0.08)', border: '1px solid rgba(255,217,61,0.25)' }}>{t.comentarios}</p>
-                        : <p className="text-sm italic" style={{ color: '#b0bcc7' }}>Sin comentarios</p>
-                    )}
-                  </div>
+                    )
+                  })()}
 
                   {/* Clientes de la tarea (una sola tarea puede servir a varios) */}
                   {clientNames.length > 1 && (
@@ -570,7 +611,6 @@ function EditTareaModal({
   const [saving, setSaving] = useState(false)
   const [title, setTitle] = useState(task.title ?? '')
   const [description, setDescription] = useState(task.description ?? '')
-  const [comentarios, setComentarios] = useState(task.comentarios ?? '')
   const [priority, setPriority] = useState(task.priority ?? 'media')
   const [dueDate, setDueDate] = useState(task.due_date ?? '')
   const [companyIds, setCompanyIds] = useState<Set<string>>(() => new Set(taskCompanyIds(task)))
@@ -634,7 +674,6 @@ function EditTareaModal({
     await supabase.from('tasks').update({
       title,
       description: description || null,
-      comentarios: comentarios || null,
       priority,
       due_date: nuevaFecha,
       company_id: companyArr[0] ?? null,
@@ -687,12 +726,6 @@ function EditTareaModal({
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>Descripción</label>
             <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} style={{ ...INP, resize: 'none' } as React.CSSProperties} />
-          </div>
-
-          {/* Comentarios / notas */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b8fa0' }}>Comentarios / notas</label>
-            <textarea value={comentarios} onChange={e => setComentarios(e.target.value)} rows={2} placeholder="Algo que quede pendiente, un apunte…" style={{ ...INP, resize: 'none' } as React.CSSProperties} />
           </div>
 
           {/* Prioridad + Fecha (las recurrentes no piden fecha) */}

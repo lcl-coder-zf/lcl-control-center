@@ -83,6 +83,12 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     const assignedArr = [...assignedIds]
     const companyArr  = [...companyIds]
 
+    // Comentario inicial (opcional) → primera entrada del hilo, con autor y fecha.
+    const autorNombre = profiles.find(p => p.id === user?.id)?.full_name ?? null
+    const comentariosLog = form.comentarios.trim()
+      ? [{ id: crypto.randomUUID(), texto: form.comentarios.trim(), autor: autorNombre, autor_id: user?.id ?? null, fecha: new Date().toISOString() }]
+      : []
+
     // Semanal por días específicos: guarda los días y arranca la primera fecha
     // en el próximo día elegido (para que no empiece en un día fuera de patrón).
     const recurrenceDays = usaDiasSemana && weekdays.size > 0
@@ -96,7 +102,7 @@ export default function NuevaTareaForm({ companies, profiles, defaultClienteId, 
     const { data: task, error: insertErr } = await supabase.from('tasks').insert([{
       title: form.title,
       description: form.description || null,
-      comentarios: form.comentarios || null,
+      comentarios_log: comentariosLog,
       // El primero queda como cliente principal; la lista completa va en task_companies.
       company_id: companyArr[0] ?? null,
       assigned_to: assignedArr[0],
