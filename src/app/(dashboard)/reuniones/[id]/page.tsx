@@ -144,13 +144,29 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) await uploadAudio(file, file.name)
+    if (!file) return
+    // El archivo lo elige el usuario: validar que sea audio de verdad.
+    if (file.type && !file.type.startsWith('audio/')) {
+      setError('El archivo debe ser de audio.')
+      return
+    }
+    await uploadAudio(file, file.name)
   }
 
+  // Tope de tamaño del audio (100 MB). Evita subidas gigantes que revientan el
+  // storage y la cuota de transcripción de Groq.
+  const MAX_AUDIO_BYTES = 100 * 1024 * 1024
+
   async function uploadAudio(blob: Blob, filename: string) {
+    if (blob.size > MAX_AUDIO_BYTES) {
+      setError('El audio supera el máximo de 100 MB.')
+      return
+    }
     setUploading(true); setError(null)
     const supabase = createClient()
-    const ext = filename.split('.').pop() || 'webm'
+    // Extensión saneada: solo letras/números, si no cae a webm.
+    const raw = (filename.split('.').pop() || 'webm').toLowerCase()
+    const ext = /^[a-z0-9]{1,5}$/.test(raw) ? raw : 'webm'
     const path = `${id}/${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage.from('reuniones').upload(path, blob, { upsert: true })
     if (upErr) { setError('Error subiendo el audio: ' + upErr.message); setUploading(false); return }
@@ -164,8 +180,15 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   async function procesar() {
     setProcessing(true); setError(null)
     try {
+      const supabase = createClient()
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess.session?.access_token
       const res = await fetch('/api/meetings/process', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ meetingId: id }),
       })
       const data = await res.json()

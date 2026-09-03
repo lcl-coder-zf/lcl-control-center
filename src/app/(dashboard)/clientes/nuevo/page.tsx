@@ -30,13 +30,17 @@ export default function NuevoClientePage() {
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
+    if (!f.type.startsWith('image/')) { setError('El logo debe ser una imagen.'); return }
+    if (f.size > 5 * 1024 * 1024) { setError('El logo no puede superar 5 MB.'); return }
+    setError('')
     setLogoFile(f)
     setLogoPreview(URL.createObjectURL(f))
   }
 
   async function uploadLogo(file: File): Promise<string | null> {
     const supabase = createClient()
-    const ext = file.name.split('.').pop()
+    const raw = (file.name.split('.').pop() || 'png').toLowerCase()
+    const ext = /^[a-z0-9]{1,5}$/.test(raw) ? raw : 'png'
     const path = `${Date.now()}.${ext}`
     const { data, error } = await supabase.storage.from('logos').upload(path, file, { upsert: true })
     if (error) return null
