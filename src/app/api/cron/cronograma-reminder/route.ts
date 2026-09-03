@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdmins, sendPushToProfiles } from '@/lib/push'
+import { assertCron } from '@/lib/cron-guard'
 
 // GET /api/cron/cronograma-reminder
 // Corre cada día lun-vie a las 6am Colombia (UTC 11:00)
@@ -17,8 +18,7 @@ function getMonday(d: Date): string {
 const primerNombre = (n?: string | null) => (n ?? 'Alguien').trim().split(/\s+/)[0]
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get('authorization')
-  if (process.env.CRON_SECRET && secret !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!assertCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

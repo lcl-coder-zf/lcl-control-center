@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdmins, sendPushToProfiles } from '@/lib/push'
+import { assertCron } from '@/lib/cron-guard'
 
 // GET /api/cron/tareas-vencidas
 // Corre cada día a las 7am (Colombia = UTC-5, cron en UTC 12:00)
@@ -26,8 +27,7 @@ const clientesDe = (t: any): string =>
   ((t?.task_companies ?? []).map((c: any) => c.companies?.name).filter(Boolean) as string[]).join(' · ')
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get('authorization')
-  if (process.env.CRON_SECRET && secret !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!assertCron(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
