@@ -7,8 +7,6 @@ import {
   KeyRound, Mail, ShieldCheck, Building2, Landmark, Code2, Share2, HelpCircle, Search, Globe,
 } from 'lucide-react'
 
-const VAULT_PIN = '1112'
-
 type Categoria = 'correos' | 'cumplimiento' | 'gobierno' | 'bancos' | 'software' | 'redes_sociales' | 'otro'
 
 const CAT: Record<Categoria, { label: string; color: string; bg: string; Icon: React.ElementType }> = {
@@ -40,17 +38,29 @@ function PinScreen({ onUnlock }: { onUnlock: () => void }) {
   const [pin, setPin] = useState('')
   const [shake, setShake] = useState(false)
 
+  const verify = useCallback(async (candidate: string) => {
+    const supabase = createClient()
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess.session?.access_token
+    try {
+      const res = await fetch('/api/vault/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ pin: candidate }),
+      })
+      if (res.ok) { setTimeout(onUnlock, 150); return }
+    } catch { /* red/servidor: tratar como PIN inválido */ }
+    setShake(true); setTimeout(() => { setPin(''); setShake(false) }, 600)
+  }, [onUnlock])
+
   const handleKey = useCallback((d: string) => {
     setPin(prev => {
       if (prev.length >= 4) return prev
       const next = prev + d
-      if (next.length === 4) {
-        if (next === VAULT_PIN) setTimeout(onUnlock, 150)
-        else { setShake(true); setTimeout(() => { setPin(''); setShake(false) }, 600) }
-      }
+      if (next.length === 4) verify(next)
       return next
     })
-  }, [onUnlock])
+  }, [verify])
 
   const handleDel = useCallback(() => setPin(p => p.slice(0, -1)), [])
 
