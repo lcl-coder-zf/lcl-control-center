@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireUser } from '@/lib/admin-guard'
 import { transcribeAudio, generateActa } from '@/lib/groq'
 
 export const runtime = 'nodejs'
@@ -10,6 +11,12 @@ type AnyClient = any
 
 // POST { meetingId } → transcribe el audio y genera el acta con Groq.
 export async function POST(req: NextRequest) {
+  // Usa service role (bypassa RLS) y quema cuota de Groq: exigir sesión. El
+  // modelo de reuniones es team-wide, así que cualquier miembro autenticado
+  // puede procesar; lo que se cierra es el acceso anónimo desde internet.
+  const user = await requireUser(req)
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
   const { meetingId } = (await req.json().catch(() => ({}))) as { meetingId?: string }
   if (!meetingId) return NextResponse.json({ error: 'meetingId requerido' }, { status: 400 })
 
