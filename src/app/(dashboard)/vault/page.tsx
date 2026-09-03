@@ -255,15 +255,33 @@ export default function VaultPage() {
   const [filterCat, setFilterCat] = useState<Categoria | 'all'>('all')
   const [search, setSearch] = useState('')
 
+  // fetch con el Bearer token de la sesión (las rutas del vault exigen admin y
+  // cifran/descifran del lado del servidor).
+  const authFetch = useCallback(async (url: string, init?: RequestInit) => {
+    const supabase = createClient()
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess.session?.access_token
+    return fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers ?? {}),
+      },
+    })
+  }, [])
+
   const load = useCallback(async () => {
     if (!unlocked) return
     setLoading(true)
-    const supabase = createClient()
-    const { data, error } = await supabase.from('vault_items').select('*').order('categoria').order('nombre')
-    if (error) setError(error.message)
-    else setItems((data as VaultItem[]) ?? [])
+    try {
+      const res = await authFetch('/api/vault/items')
+      const json = await res.json()
+      if (!res.ok) setError(json.error || 'Error cargando el vault')
+      else setItems((json.items as VaultItem[]) ?? [])
+    } catch { setError('Error de red cargando el vault') }
     setLoading(false)
-  }, [unlocked])
+  }, [unlocked, authFetch])
 
   useEffect(() => { load() }, [load])
 
@@ -277,13 +295,14 @@ export default function VaultPage() {
   async function handleSave() {
     if (!form.nombre) return
     setSaving(true)
-    const supabase = createClient()
     const payload = {
       nombre: form.nombre, usuario: form.usuario || null, contrasena: form.contrasena || null,
       url: form.url || null, notas: form.notas || null, categoria: form.categoria,
     }
-    if (editingId) await supabase.from('vault_items').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId)
-    else await supabase.from('vault_items').insert([payload])
+    const res = editingId
+      ? await authFetch(`/api/vault/items/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) })
+      : await authFetch('/api/vault/items', { method: 'POST', body: JSON.stringify(payload) })
+    if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j.error || 'Error guardando') }
     setShowModal(false)
     setSaving(false)
     await load()
@@ -291,9 +310,9 @@ export default function VaultPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar esta credencial?')) return
-    const supabase = createClient()
-    await supabase.from('vault_items').delete().eq('id', id)
-    setItems(prev => prev.filter(i => i.id !== id))
+    const res = await authFetch(`/api/vault/items/${id}`, { method: 'DELETE' })
+    if (res.ok) setItems(prev => prev.filter(i => i.id !== id))
+    else { const j = await res.json().catch(() => ({})); setError(j.error || 'Error eliminando') }
   }
 
   if (!unlocked) return <div className="p-4 lg:p-8"><PinScreen onUnlock={() => setUnlocked(true)} /></div>

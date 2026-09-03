@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin-guard'
+import { encryptSecret } from '@/lib/vault-crypto'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = any
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     // No rompe el alta si la tabla no existe todavía.
     try {
       await admin.from('usuarios_sistema').upsert(
-        { nombre: full_name, email: email.trim().toLowerCase(), pass: password, rol: role, updated_at: new Date().toISOString() },
+        { nombre: full_name, email: email.trim().toLowerCase(), pass: encryptSecret(password), rol: role, updated_at: new Date().toISOString() },
         { onConflict: 'email' },
       )
     } catch { /* la tabla puede no existir aún; no bloquear el alta */ }
@@ -117,7 +118,7 @@ export async function PATCH(req: NextRequest) {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
       if (full_name) patch.nombre = full_name
       if (email) patch.email = email.trim().toLowerCase()
-      if (password) patch.pass = password
+      if (password) patch.pass = encryptSecret(password)
       if (role) patch.rol = role
       await admin.from('usuarios_sistema').update(patch).eq('email', emailVault)
     } catch { /* no bloquear */ }
