@@ -28,10 +28,15 @@ export async function POST(req: NextRequest) {
   if (!actorId) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const { title, body, url, recipientIds, toAdmins, tag } = await req.json().catch(() => ({}))
-  if (!title) return NextResponse.json({ error: 'title requerido' }, { status: 400 })
+  if (!title || typeof title !== 'string') return NextResponse.json({ error: 'title requerido' }, { status: 400 })
+
+  // Caps para acotar abuso desde una sesión: es una herramienta interna, pero un
+  // solo POST no debería poder disparar un blast ilimitado ni payloads enormes.
+  const t = title.slice(0, 200)
+  const b = typeof body === 'string' ? body.slice(0, 1000) : ''
 
   const destinos: string[] = Array.isArray(recipientIds)
-    ? recipientIds.filter((id: unknown): id is string => typeof id === 'string' && !!id)
+    ? recipientIds.filter((id: unknown): id is string => typeof id === 'string' && !!id).slice(0, 50)
     : []
 
   if (toAdmins) destinos.push(...(await getAdmins()).map((a) => a.id))
@@ -41,10 +46,10 @@ export async function POST(req: NextRequest) {
   if (!finales.length) return NextResponse.json({ ok: true, sent: 0, removed: 0 })
 
   const res = await sendPushToProfiles(finales, {
-    title,
-    body: body ?? '',
-    url: url ?? '/dashboard',
-    tag: tag ?? 'lcl',
+    title: t,
+    body: b,
+    url: typeof url === 'string' ? url : '/dashboard',
+    tag: typeof tag === 'string' ? tag : 'lcl',
   })
   return NextResponse.json({ ok: true, ...res })
 }
