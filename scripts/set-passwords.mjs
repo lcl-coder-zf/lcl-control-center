@@ -8,7 +8,6 @@
 import { createClient } from '@supabase/supabase-js'
 import readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
-import { writeFileSync } from 'node:fs'
 
 // Combos de símbolos (estilo AndreaLCL+*, CamilaLCL+-+). Se reparte uno
 // distinto a cada persona para que las claves no queden iguales.
@@ -67,10 +66,9 @@ for (let i = 0; i < USERS.length; i++) {
 }
 
 if (APPLY && resultados.length) {
-  // Deja las credenciales en un archivo local temporal para documentarlas.
-  const out = '/tmp/lcl-credenciales.txt'
-  const txt = resultados.map(r => `${r.nombre}\t${r.email}\t${r.clave}`).join('\n') + '\n'
-  writeFileSync(out, txt)
-  console.log(`\n📝 Guardadas en ${out} (temporal — para documentar en el vault).`)
+  // No se escriben a disco: /tmp es legible por otros usuarios del SO y queda
+  // ahí olvidado. Se imprimen solo en esta consola para copiar al vault a mano.
+  console.log('\n📝 Credenciales (cópialas al vault y no las dejes en archivos):')
+  for (const r of resultados) console.log(`   ${r.nombre}\t${r.email}\t${r.clave}`)
 }
 console.log(`\n${APPLY ? 'Listo. Avisa a cada persona su clave por privado.' : 'Corre con --apply para aplicar.'}\n`)
