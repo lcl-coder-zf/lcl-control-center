@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useCallback, useRef, use } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Mic, Square, Upload, Loader2, Sparkles, ArrowLeft, Calendar, Building2,
   Users, Play, CheckSquare, Plus, Wand2, FileText, History,
-  ChevronDown, Pencil, Check, ScrollText, Download,
+  ChevronDown, Pencil, Check, ScrollText, Download, Trash2, AlertTriangle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { deleteMeeting } from '@/lib/meetings'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { formatDate } from '@/lib/utils'
 
@@ -48,6 +50,7 @@ function ActaView({ md }: { md: string }) {
 
 export default function ReunionDetalle({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const router = useRouter()
   const [meeting, setMeeting] = useState<Row | null>(null)
   const [attendees, setAttendees] = useState<Row[]>([])
   const [seguimiento, setSeguimiento] = useState<Row[]>([])
@@ -55,6 +58,12 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   const [profiles, setProfiles] = useState<Row[]>([])
   const [companies, setCompanies] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Rol del usuario: solo los admin (Laura, Daniel, Isa) pueden eliminar.
+  const [role, setRole] = useState<string>('consultant')
+  const isAdmin = role === 'admin'
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Audio
   const [recording, setRecording] = useState(false)
@@ -110,6 +119,31 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Rol del usuario logueado (para mostrar u ocultar "Eliminar").
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('profiles').select('role').eq('id', user.id).single()
+        .then(({ data }) => setRole((data as { role: string } | null)?.role ?? 'consultant'))
+    })
+  }, [])
+
+  // ── Eliminar reunión (solo admin) ──────────────────────────
+  async function eliminarReunion() {
+    if (!meeting || deleting) return
+    setDeleting(true)
+    try {
+      const supabase = createClient()
+      await deleteMeeting(supabase, meeting)
+      router.push('/reuniones')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar la reunión')
+      setDeleting(false)
+      setConfirmDel(false)
+    }
+  }
 
   // ── Grabación en el navegador ──────────────────────────────
   async function startRecording() {
@@ -318,11 +352,20 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
       <div className="rounded-2xl overflow-hidden mb-5" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
         <div style={{ height: 5, background: 'linear-gradient(90deg,#40b5fa,#a78bfa)' }} />
         <div className="p-5">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            {meeting.series && (
-              <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: 'rgba(64,181,250,0.1)', color: '#40b5fa' }}>{meeting.series}</span>
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {meeting.series && (
+                <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: 'rgba(64,181,250,0.1)', color: '#40b5fa' }}>{meeting.series}</span>
+              )}
+              <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+            </div>
+            {isAdmin && (
+              <button onClick={() => setConfirmDel(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0 transition-all hover:brightness-95"
+                style={{ background: 'rgba(255,107,107,0.1)', color: '#ff6b6b' }}>
+                <Trash2 className="w-3.5 h-3.5" />Eliminar
+              </button>
             )}
-            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: st.bg, color: st.color }}>{st.label}</span>
           </div>
           <h1 className="text-2xl lg:text-3xl font-black tracking-tight" style={{ color: '#1a2e3b' }}>{meeting.title}</h1>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3 text-sm" style={{ color: '#6b8fa0' }}>
@@ -575,6 +618,39 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
             ))}
           </div>
         </section>
+      )}
+
+      {/* Confirmación de borrado (solo admin) */}
+      {confirmDel && isAdmin && (
+        <>
+          <div className="fixed inset-0 z-40 bg-[#0a1220]/40 backdrop-blur-[3px] animate-fade-in" onClick={() => !deleting && setConfirmDel(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => !deleting && setConfirmDel(false)}>
+            <div className="w-full max-w-sm rounded-3xl bg-white shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()} style={{ animation: 'popIn .25s cubic-bezier(.2,.8,.2,1) both' }}>
+              <div className="p-6">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'rgba(255,107,107,0.12)' }}>
+                  <AlertTriangle className="w-6 h-6" style={{ color: '#ff6b6b' }} />
+                </div>
+                <h2 className="text-lg font-black" style={{ color: '#1a2e3b' }}>Eliminar reunión</h2>
+                <p className="text-sm mt-1.5 leading-relaxed" style={{ color: '#6b8fa0' }}>
+                  Se eliminará <b style={{ color: '#1a2e3b' }}>«{meeting.title}»</b> con su audio, transcripción y acta. Las tareas de seguimiento ya creadas se conservan. <b>Esta acción no se puede deshacer.</b>
+                </p>
+                <div className="flex items-center gap-2 mt-6">
+                  <button onClick={() => setConfirmDel(false)} disabled={deleting}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={eliminarReunion} disabled={deleting}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60" style={{ background: '#ff6b6b', color: '#fff' }}>
+                    {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}Eliminar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <style jsx>{`
+            @keyframes popIn { from { opacity: 0; transform: scale(.96) translateY(8px) } to { opacity: 1; transform: none } }
+          `}</style>
+        </>
       )}
     </div>
   )
