@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Mic, Plus, X, Loader2, ArrowUpRight, Building2, Calendar, FileText, Clock, Search } from 'lucide-react'
+import { Mic, Plus, X, Loader2, ArrowUpRight, Building2, Calendar, FileText, Clock, Search, Trash2, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { deleteMeeting } from '@/lib/meetings'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { formatDate } from '@/lib/utils'
 
@@ -27,20 +28,41 @@ export default function ReunionesPage() {
   const [showNew, setShowNew] = useState(false)
   const [q, setQ] = useState('')
 
+  // Rol del usuario: solo los admin (Laura, Daniel, Isa) pueden eliminar.
+  const [role, setRole] = useState<string>('consultant')
+  const isAdmin = role === 'admin'
+  const [pendingDel, setPendingDel] = useState<Row | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [m, p, c] = await Promise.all([
+    const { data: { user } } = await supabase.auth.getUser()
+    const [m, p, c, me] = await Promise.all([
       supabase.from('meetings').select('*, companies(name)').order('meeting_date', { ascending: false }),
       supabase.from('profiles').select('id, full_name').order('full_name'),
       supabase.from('companies').select('id, name').eq('status', 'activo').order('name'),
+      user ? supabase.from('profiles').select('role').eq('id', user.id).single() : Promise.resolve({ data: null }),
     ])
     setMeetings(m.data ?? [])
     setProfiles(p.data ?? [])
     setCompanies(c.data ?? [])
+    setRole((me.data as { role: string } | null)?.role ?? 'consultant')
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function eliminarReunion() {
+    if (!pendingDel || deleting) return
+    setDeleting(true)
+    try {
+      const supabase = createClient()
+      await deleteMeeting(supabase, pendingDel)
+      setPendingDel(null)
+      await load()
+    } catch { /* la RLS lo bloquea si no es admin */ }
+    setDeleting(false)
+  }
 
   const filtered = useMemo(() => {
     if (!q.trim()) return meetings
@@ -128,7 +150,7 @@ export default function ReunionesPage() {
                 <h2 className="text-sm font-black uppercase tracking-wide" style={{ color: '#1a2e3b' }}>{serie}</h2>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(64,181,250,0.1)', color: '#40b5fa' }}>{list.length}</span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">{list.map((mt, i) => <MeetingCard key={mt.id} mt={mt} i={i} />)}</div>
+              <div className="grid gap-3 sm:grid-cols-2">{list.map((mt, i) => <MeetingCard key={mt.id} mt={mt} i={i} isAdmin={isAdmin} onAskDelete={setPendingDel} />)}</div>
             </div>
           ))}
           {sueltas.length > 0 && (
@@ -139,7 +161,7 @@ export default function ReunionesPage() {
                   <h2 className="text-sm font-black uppercase tracking-wide" style={{ color: '#6b8fa0' }}>Otras reuniones</h2>
                 </div>
               )}
-              <div className="grid gap-3 sm:grid-cols-2">{sueltas.map((mt, i) => <MeetingCard key={mt.id} mt={mt} i={i} />)}</div>
+              <div className="grid gap-3 sm:grid-cols-2">{sueltas.map((mt, i) => <MeetingCard key={mt.id} mt={mt} i={i} isAdmin={isAdmin} onAskDelete={setPendingDel} />)}</div>
             </div>
           )}
         </div>
@@ -154,6 +176,39 @@ export default function ReunionesPage() {
           onCreated={(id) => router.push(`/reuniones/${id}`)}
         />
       )}
+
+      {/* Confirmación de borrado (solo admin) */}
+      {pendingDel && isAdmin && (
+        <>
+          <div className="fixed inset-0 z-40 bg-[#0a1220]/40 backdrop-blur-[3px] animate-fade-in" onClick={() => !deleting && setPendingDel(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => !deleting && setPendingDel(null)}>
+            <div className="w-full max-w-sm rounded-3xl bg-white shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()} style={{ animation: 'popIn .25s cubic-bezier(.2,.8,.2,1) both' }}>
+              <div className="p-6">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'rgba(255,107,107,0.12)' }}>
+                  <AlertTriangle className="w-6 h-6" style={{ color: '#ff6b6b' }} />
+                </div>
+                <h2 className="text-lg font-black" style={{ color: '#1a2e3b' }}>Eliminar reunión</h2>
+                <p className="text-sm mt-1.5 leading-relaxed" style={{ color: '#6b8fa0' }}>
+                  Se eliminará <b style={{ color: '#1a2e3b' }}>«{pendingDel.title}»</b> con su audio, transcripción y acta. Las tareas de seguimiento ya creadas se conservan. <b>Esta acción no se puede deshacer.</b>
+                </p>
+                <div className="flex items-center gap-2 mt-6">
+                  <button onClick={() => setPendingDel(null)} disabled={deleting}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50" style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={eliminarReunion} disabled={deleting}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60" style={{ background: '#ff6b6b', color: '#fff' }}>
+                    {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}Eliminar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <style jsx>{`
+            @keyframes popIn { from { opacity: 0; transform: scale(.96) translateY(8px) } to { opacity: 1; transform: none } }
+          `}</style>
+        </>
+      )}
     </div>
   )
 }
@@ -167,7 +222,7 @@ function Stat({ n, label, accent = '#fff' }: { n: number; label: string; accent?
   )
 }
 
-function MeetingCard({ mt, i }: { mt: Row; i: number }) {
+function MeetingCard({ mt, i, isAdmin, onAskDelete }: { mt: Row; i: number; isAdmin: boolean; onAskDelete: (mt: Row) => void }) {
   const st = STATUS[mt.status] ?? STATUS.borrador
   return (
     <Link href={`/reuniones/${mt.id}`}
@@ -177,6 +232,15 @@ function MeetingCard({ mt, i }: { mt: Row; i: number }) {
       onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,40,80,0.03)')}>
       {/* cinta superior */}
       <div className="absolute top-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'linear-gradient(90deg,#40b5fa,#a78bfa)' }} />
+      {isAdmin && (
+        <button
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onAskDelete(mt) }}
+          title="Eliminar reunión"
+          className="absolute top-2.5 right-2.5 z-10 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
+          style={{ background: 'rgba(255,107,107,0.12)', color: '#ff6b6b' }}>
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
       <div className="flex items-start gap-3">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgba(64,181,250,0.15), rgba(167,139,250,0.15))' }}>
           <Mic className="w-5 h-5" style={{ color: '#40b5fa' }} />
