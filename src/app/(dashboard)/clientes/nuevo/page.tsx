@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { notify, adminIds } from '@/lib/notify'
@@ -22,6 +22,28 @@ export default function NuevoClientePage() {
     contact_name: '', contact_email: '', contact_phone: '',
     service_type: [] as string[], monthly_hours: '', status: 'activo', notes: '',
   })
+  // Lista viva: los servicios base + los que ya existen en otros clientes.
+  // Un servicio creado aquí se guarda en el cliente y aparece solo la próxima vez.
+  const [servicios, setServicios] = useState<string[]>(SERVICIOS)
+  const [nuevoServicio, setNuevoServicio] = useState('')
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('companies').select('service_type').then(({ data }) => {
+      const usados = (data ?? []).flatMap(c => Array.isArray(c.service_type) ? c.service_type : []).filter(Boolean)
+      setServicios(prev => Array.from(new Set([...prev, ...usados])))
+    })
+  }, [])
+
+  function agregarServicio() {
+    const s = nuevoServicio.trim()
+    if (!s) return
+    const existente = servicios.find(x => x.toLowerCase() === s.toLowerCase())
+    if (!existente) setServicios(prev => [...prev, s])
+    const valor = existente ?? s
+    if (!form.service_type.includes(valor)) toggleServicio(valor)
+    setNuevoServicio('')
+  }
 
   function set(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -158,7 +180,7 @@ export default function NuevoClientePage() {
             )}
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {SERVICIOS.map(s => {
+            {servicios.map(s => {
               const active = form.service_type.includes(s)
               return (
                 <button key={s} type="button" onClick={() => toggleServicio(s)}
@@ -176,6 +198,20 @@ export default function NuevoClientePage() {
                 </button>
               )
             })}
+          </div>
+          <div className="flex gap-2">
+            <input value={nuevoServicio} onChange={e => setNuevoServicio(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregarServicio() } }}
+              placeholder="¿Servicio nuevo? Escríbelo y agrégalo"
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none transition-all"
+              style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }}
+              onFocus={e => e.target.style.borderColor = 'rgba(64,181,250,0.5)'}
+              onBlur={e => e.target.style.borderColor = 'rgba(0,40,80,0.10)'} />
+            <button type="button" onClick={agregarServicio} disabled={!nuevoServicio.trim()}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40"
+              style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa', border: '1px solid rgba(64,181,250,0.35)' }}>
+              + Agregar
+            </button>
           </div>
           <Field label="Dedicación mensual (horas)" value={form.monthly_hours} onChange={v => set('monthly_hours', v)} placeholder="Ej: 32" type="number" />
         </div>
