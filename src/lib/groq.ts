@@ -46,39 +46,47 @@ export interface ActaGenerada {
   actionItems: { title: string; assignee?: string }[]
 }
 
-// Groq rota sus modelos seguido y no todos están en toda cuenta. En vez de
-// hardcodear uno (que puede dar 404), preguntamos qué modelos hay y elegimos
-// el mejor disponible de esta lista de preferencia.
+// Groq rota sus modelos y cada uno tiene su PROPIO tope de tokens/minuto (TPM)
+// en el tier gratis. Una transcripción de reunión larga (~10k tokens) revienta
+// los modelos de 8k TPM. La lista va ordenada dando prioridad a los de más TPM
+// (más "aire" para transcripciones largas) sin perder calidad; luego se prueban
+// en CASCADA: si uno responde 429/413, se salta al siguiente (presupuesto propio).
 const ACTA_MODEL_PRIORITY = [
-  'llama-3.3-70b-versatile',
-  'openai/gpt-oss-120b',
-  'moonshotai/kimi-k2-instruct',
-  'openai/gpt-oss-20b',
+  'llama-3.3-70b-versatile',                      // ~12k TPM, mejor calidad
+  'meta-llama/llama-4-scout-17b-16e-instruct',    // ~30k TPM, mucho aire
+  'moonshotai/kimi-k2-instruct',                  // ~10k TPM
+  'openai/gpt-oss-120b',                          // ~8k TPM
+  'openai/gpt-oss-20b',                           // ~8k TPM
   'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'meta-llama/llama-4-scout-17b-16e-instruct',
   'qwen/qwen3-32b',
   'llama-3.1-8b-instant',
 ]
 
-let cachedActaModel: string | null = null
+let cachedModels: string[] | null = null
 
-async function pickActaModel(): Promise<string> {
-  if (cachedActaModel) return cachedActaModel
+// Devuelve los modelos de la lista de preferencia que existen en esta cuenta,
+// en orden. Si no se puede consultar, cae a la lista completa.
+async function actaModels(): Promise<string[]> {
+  if (cachedModels) return cachedModels
   try {
     const res = await fetch(`${GROQ_URL}/models`, { headers: { Authorization: `Bearer ${groqKey()}` } })
     if (res.ok) {
       const data = await res.json()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ids: string[] = (data?.data ?? []).map((m: any) => m.id as string)
-      const esTexto = (id: string) => !/whisper|tts|guard|embed|prompt-guard/i.test(id)
-      const elegido = ACTA_MODEL_PRIORITY.find(m => ids.includes(m)) ?? ids.find(esTexto)
-      if (elegido) { cachedActaModel = elegido; return elegido }
+      const disponibles = ACTA_MODEL_PRIORITY.filter(m => ids.includes(m))
+      // Si ninguno de la lista está, usar cualquier modelo de texto de la cuenta.
+      const otros = ids.filter(id => !/whisper|tts|guard|embed|prompt-guard/i.test(id))
+      cachedModels = disponibles.length ? disponibles : otros
+      if (cachedModels.length) return cachedModels
     }
   } catch { /* cae al fallback */ }
-  return ACTA_MODEL_PRIORITY[0]
+  return ACTA_MODEL_PRIORITY
 }
 
 // Toma la transcripción y arma resumen + acta (markdown) + tareas de seguimiento.
+// Prueba los modelos en cascada: si uno se queda sin cupo de tokens/minuto
+// (429) o rechaza por tamaño (413), pasa al siguiente en vez de fallar.
 export async function generateActa(
   transcript: string,
   ctx: { title: string; date: string; attendees?: string[] },
@@ -101,31 +109,43 @@ Transcripción:
 ${transcript}
 """`
 
-  const res = await fetch(`${GROQ_URL}/chat/completions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${groqKey()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: await pickActaModel(),
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`Groq acta falló: ${res.status} ${await res.text()}`)
-  const data = await res.json()
-  const content = data.choices?.[0]?.message?.content ?? '{}'
-  let parsed: ActaGenerada
-  try {
-    parsed = JSON.parse(content)
-  } catch {
-    parsed = { summary: '', acta: content, actionItems: [] }
+  const modelos = await actaModels()
+  let ultimoError = 'sin modelos disponibles'
+  for (const model of modelos) {
+    const res = await fetch(`${GROQ_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${groqKey()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: user },
+        ],
+      }),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      const content = data.choices?.[0]?.message?.content ?? '{}'
+      let parsed: ActaGenerada
+      try {
+        parsed = JSON.parse(content)
+      } catch {
+        parsed = { summary: '', acta: content, actionItems: [] }
+      }
+      return {
+        summary: parsed.summary ?? '',
+        acta: parsed.acta ?? '',
+        actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : [],
+      }
+    }
+
+    // 429 (sin cupo de tokens/minuto) o 413 (muy grande) → probar el siguiente
+    // modelo, que tiene su propio presupuesto. Otros errores: cortar.
+    ultimoError = `${res.status} ${await res.text()}`
+    if (res.status !== 429 && res.status !== 413) break
   }
-  return {
-    summary: parsed.summary ?? '',
-    acta: parsed.acta ?? '',
-    actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : [],
-  }
+  throw new Error(`Groq acta falló: ${ultimoError}`)
 }
