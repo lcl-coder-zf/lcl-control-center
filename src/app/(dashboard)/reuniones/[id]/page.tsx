@@ -6,12 +6,13 @@ import { useRouter } from 'next/navigation'
 import {
   Mic, Square, Upload, Loader2, Sparkles, ArrowLeft, Calendar, Building2,
   Users, Play, CheckSquare, Plus, Wand2, FileText, History,
-  ChevronDown, Pencil, Check, ScrollText, Download, Trash2, AlertTriangle,
+  ChevronDown, Pencil, Check, ScrollText, Download, Trash2, AlertTriangle, Pause,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { deleteMeeting } from '@/lib/meetings'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { formatDate } from '@/lib/utils'
+import { toTranscriptionChunks } from '@/lib/audio-chunk'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any
@@ -67,11 +68,15 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
 
   // Audio
   const [recording, setRecording] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [elapsed, setElapsed] = useState(0)          // segundos grabados (sin contar pausa)
   const [uploading, setUploading] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [procMsg, setProcMsg] = useState('')          // detalle del paso de transcripción
   const [error, setError] = useState<string | null>(null)
   const mediaRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Acta + tareas sugeridas + transcripción
   const [actaDraft, setActaDraft] = useState('')
@@ -145,7 +150,19 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
     }
   }
 
-  // ── Grabación en el navegador ──────────────────────────────
+  // ── Cronómetro de grabación (avanza solo cuando NO está en pausa) ──
+  function startTimer() {
+    if (timerRef.current) return
+    timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+  }
+  function stopTimer() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+  }
+  useEffect(() => () => stopTimer(), [])  // limpiar al desmontar
+  const fmtElapsed = (s: number) =>
+    `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
+
+  // ── Grabación en el navegador (con pausa/reanudar) ─────────
   async function startRecording() {
     setError(null)
     try {
@@ -167,13 +184,31 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
       mediaRef.current = mr
       mr.start()
       setRecording(true)
+      setPaused(false)
+      setElapsed(0)
+      startTimer()
     } catch {
       setError('No se pudo acceder al micrófono. Revisa los permisos del navegador.')
     }
   }
+  // Pausar deja la grabación en espera; al reanudar continúa el MISMO archivo.
+  function pauseRecording() {
+    if (mediaRef.current?.state !== 'recording') return
+    mediaRef.current.pause()
+    stopTimer()
+    setPaused(true)
+  }
+  function resumeRecording() {
+    if (mediaRef.current?.state !== 'paused') return
+    mediaRef.current.resume()
+    startTimer()
+    setPaused(false)
+  }
   function stopRecording() {
-    mediaRef.current?.stop()
+    mediaRef.current?.stop()   // dispara onstop → sube el audio completo
+    stopTimer()
     setRecording(false)
+    setPaused(false)
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -195,11 +230,48 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
   }
 
   // ── Transcribir + acta con Groq ────────────────────────────
+  // Reuniones largas revientan el tope de tamaño de Groq (413). Por eso el audio
+  // se trocea EN EL NAVEGADOR (mono 16 kHz, segmentos de 8 min) y se transcribe
+  // trozo por trozo; luego el servidor solo redacta el acta desde la transcripción.
   async function procesar() {
-    setProcessing(true); setError(null)
+    if (!meeting?.audio_url) { setError('La reunión no tiene audio.'); return }
+    setProcessing(true); setError(null); setProcMsg('')
     try {
+      const supabase = createClient()
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess.session?.access_token
+      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+
+      // Si ya hay transcripción (p.ej. "Regenerar acta"), no re-transcribir.
+      if (!meeting.transcript?.trim()) {
+        setProcMsg('Descargando audio…')
+        const audioRes = await fetch(meeting.audio_url)
+        if (!audioRes.ok) throw new Error('No se pudo descargar el audio de la reunión.')
+        const audioBlob = await audioRes.blob()
+
+        const chunks = await toTranscriptionChunks(audioBlob, setProcMsg)
+        const partes: string[] = []
+        for (let i = 0; i < chunks.length; i++) {
+          setProcMsg(`Transcribiendo… (${i + 1}/${chunks.length})`)
+          const fd = new FormData()
+          fd.append('file', chunks[i], `trozo-${i}.wav`)
+          const r = await fetch('/api/meetings/transcribe-chunk', {
+            method: 'POST', headers: authHeaders, body: fd,
+          })
+          const d = await r.json()
+          if (!r.ok) throw new Error(d.error || `Falló la transcripción del trozo ${i + 1}`)
+          if (d.text) partes.push(d.text)
+        }
+        const transcript = partes.join(' ').trim()
+        if (!transcript) throw new Error('La transcripción quedó vacía. ¿El audio tiene voz audible?')
+        await supabase.from('meetings').update({ transcript }).eq('id', id)
+      }
+
+      // El servidor detecta la transcripción ya guardada y solo genera el acta.
+      setProcMsg('Redactando el acta…')
       const res = await fetch('/api/meetings/process', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ meetingId: id }),
       })
       const data = await res.json()
@@ -208,7 +280,7 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error procesando')
     }
-    setProcessing(false)
+    setProcessing(false); setProcMsg('')
   }
 
   async function guardarActa() {
@@ -393,24 +465,46 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
         {hasAudio && <audio controls src={meeting.audio_url} className="w-full mb-4" />}
         <div className="flex flex-wrap items-center gap-2">
           {!recording ? (
-            <button onClick={startRecording} disabled={uploading}
+            <button onClick={startRecording} disabled={uploading || processing}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
               style={{ background: 'rgba(255,107,107,0.12)', color: '#ff6b6b' }}>
               <Mic className="w-4 h-4" />Grabar
             </button>
           ) : (
-            <button onClick={stopRecording}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold animate-pulse"
-              style={{ background: '#ff6b6b', color: '#fff' }}>
-              <Square className="w-4 h-4" />Detener
-            </button>
+            <>
+              {!paused ? (
+                <button onClick={pauseRecording}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ background: 'rgba(245,158,11,0.14)', color: '#d97706' }}>
+                  <Pause className="w-4 h-4" />Pausar
+                </button>
+              ) : (
+                <button onClick={resumeRecording}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ background: 'rgba(34,197,94,0.14)', color: '#059669' }}>
+                  <Mic className="w-4 h-4" />Reanudar
+                </button>
+              )}
+              <button onClick={stopRecording}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: '#ff6b6b', color: '#fff' }}>
+                <Square className="w-4 h-4" />Detener
+              </button>
+              {/* Indicador vivo: punto rojo parpadeante + cronómetro */}
+              <span className="flex items-center gap-2 text-sm font-semibold" style={{ color: paused ? '#d97706' : '#ff6b6b' }}>
+                <span className={paused ? '' : 'animate-pulse'} style={{ width: 9, height: 9, borderRadius: 999, background: 'currentColor', display: 'inline-block' }} />
+                {paused ? 'En pausa' : 'Grabando'} · {fmtElapsed(elapsed)}
+              </span>
+            </>
           )}
-          <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
-            style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
-            <Upload className="w-4 h-4" />{uploading ? 'Subiendo…' : 'Subir audio'}
-            <input type="file" accept="audio/*" onChange={onFile} disabled={uploading} className="hidden" />
-          </label>
-          {hasAudio && (
+          {!recording && (
+            <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+              style={{ background: '#f4f7fa', color: '#6b8fa0' }}>
+              <Upload className="w-4 h-4" />{uploading ? 'Subiendo…' : 'Subir audio'}
+              <input type="file" accept="audio/*" onChange={onFile} disabled={uploading || processing} className="hidden" />
+            </label>
+          )}
+          {hasAudio && !recording && (
             <button onClick={procesar} disabled={processing}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ml-auto disabled:opacity-60"
               style={{ background: '#40b5fa', color: '#fff' }}>
@@ -419,6 +513,7 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
           )}
         </div>
         {uploading && <p className="text-xs mt-3 flex items-center gap-1.5" style={{ color: '#6b8fa0' }}><Loader2 className="w-3 h-3 animate-spin" />Subiendo audio…</p>}
+        {processing && procMsg && <p className="text-xs mt-3 flex items-center gap-1.5" style={{ color: '#8b5cf6' }}><Loader2 className="w-3 h-3 animate-spin" />{procMsg}</p>}
       </section>
 
       {/* Resumen destacado */}
