@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { transcribeAudio, generateActa } from '@/lib/groq'
+import { transcribeAudio } from '@/lib/groq'
+import { generateActa } from '@/lib/acta'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
