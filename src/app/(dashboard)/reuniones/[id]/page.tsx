@@ -258,8 +258,12 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
           const r = await fetch('/api/meetings/transcribe-chunk', {
             method: 'POST', headers: authHeaders, body: fd,
           })
-          const d = await r.json()
-          if (!r.ok) throw new Error(d.error || `Falló la transcripción del trozo ${i + 1}`)
+          // La respuesta puede no ser JSON (p.ej. un 413 de texto plano del
+          // gateway de Vercel): leer como texto y parsear con cuidado.
+          const raw = await r.text()
+          let d: { text?: string; error?: string } = {}
+          try { d = raw ? JSON.parse(raw) : {} } catch { d = { error: raw } }
+          if (!r.ok) throw new Error(d.error || `Falló la transcripción del trozo ${i + 1} (HTTP ${r.status})`)
           if (d.text) partes.push(d.text)
         }
         const transcript = partes.join(' ').trim()
@@ -274,7 +278,9 @@ export default function ReunionDetalle({ params }: { params: Promise<{ id: strin
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ meetingId: id }),
       })
-      const data = await res.json()
+      const rawP = await res.text()
+      let data: { error?: string } = {}
+      try { data = rawP ? JSON.parse(rawP) : {} } catch { data = { error: rawP } }
       if (!res.ok) throw new Error(data.error || 'Falló el procesamiento')
       await load()
     } catch (err) {

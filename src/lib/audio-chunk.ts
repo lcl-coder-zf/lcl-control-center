@@ -13,7 +13,10 @@
 // ============================================================
 
 const TARGET_RATE = 16000        // Whisper trabaja a 16 kHz; más no aporta.
-const CHUNK_SECONDS = 8 * 60     // 8 min → ~15 MB por WAV, cómodo bajo el tope.
+// 2 min de WAV mono 16 kHz = ~3.7 MB. El límite REAL que manda es el tope de
+// Vercel para el body de una función serverless: 4.5 MB. Por eso los trozos van
+// por debajo de eso (no por el tope de Groq, que es mucho mayor).
+const CHUNK_SECONDS = 2 * 60
 
 type Win = typeof window & { webkitAudioContext?: typeof AudioContext }
 
