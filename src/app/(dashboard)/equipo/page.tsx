@@ -7,7 +7,23 @@ import { Users, Cake, PartyPopper, AlertTriangle } from 'lucide-react'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import EmployeePanel from '@/components/equipo/EmployeePanel'
 import { isOverdue } from '@/lib/tasks'
-import { diasACumple, cumpleLabel, aniversario } from '@/lib/perfil'
+import { diasACumple, cumpleLabel, aniversario, completitud } from '@/lib/perfil'
+
+// Iniciales con un anillo que se llena según el % de perfil completo
+function AvatarProgreso({ initials, pct }: { initials: string; pct: number }) {
+  const r = 24, c = 2 * Math.PI * r
+  return (
+    <div className="relative w-[52px] h-[52px] flex-shrink-0" title={`Perfil ${pct}% completo`}>
+      <svg width="52" height="52" className="absolute inset-0 -rotate-90">
+        <circle cx="26" cy="26" r={r} fill="none" stroke="rgba(0,40,80,0.07)" strokeWidth="2.5" />
+        <circle cx="26" cy="26" r={r} fill="none" stroke={pct === 100 ? '#4ade80' : '#40b5fa'} strokeWidth="2.5"
+          strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} strokeLinecap="round" />
+      </svg>
+      <div className="absolute inset-[5px] rounded-full flex items-center justify-center text-sm font-black"
+        style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>{initials}</div>
+    </div>
+  )
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any
@@ -122,11 +138,11 @@ export default function EquipoPage() {
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(64,181,250,0.35)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 20px rgba(64,181,250,0.08)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,40,80,0.08)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-black flex-shrink-0"
-                  style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>{initials}</div>
+                <AvatarProgreso initials={initials} pct={completitud(p)} />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-sm truncate" style={{ color: '#1a2e3b' }}>{p.full_name}</p>
                   <p className="text-[11px] truncate" style={{ color: '#6b8fa0' }}>{title}</p>
+                  {p.profesion && <p className="text-[10px] truncate" style={{ color: '#86a2b2' }}>{p.profesion}</p>}
                 </div>
                 {cumple !== null && cumple <= 7 && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 flex-shrink-0"
@@ -142,6 +158,17 @@ export default function EquipoPage() {
                 )}
               </div>
               {p.bio && <p className="text-xs mb-3 line-clamp-2" style={{ color: '#4a5a6b' }}>{p.bio}</p>}
+              {(p.especialidades ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {p.especialidades.slice(0, 3).map((e: string) => (
+                    <span key={e} className="text-[10px] px-2 py-0.5 rounded-md font-medium"
+                      style={{ background: 'rgba(64,181,250,0.10)', color: '#2a9ae0' }}>{e}</span>
+                  ))}
+                  {p.especialidades.length > 3 && (
+                    <span className="text-[10px] px-1.5 py-0.5" style={{ color: '#86a2b2' }}>+{p.especialidades.length - 3}</span>
+                  )}
+                </div>
+              )}
               {/* Barra de carga: rojo vencidas · morado en progreso · azul pendientes */}
               {wl.total > 0 ? (
                 <div className="mb-2">
