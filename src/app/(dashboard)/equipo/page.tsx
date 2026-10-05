@@ -6,6 +6,7 @@ import { ROLE_LABELS } from '@/types'
 import { Users } from 'lucide-react'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import EmployeePanel from '@/components/equipo/EmployeePanel'
+import { isOverdue } from '@/lib/tasks'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any
@@ -23,7 +24,7 @@ export default function EquipoPage() {
       const [{ data: me }, { data: p }, { data: t }] = await Promise.all([
         sb.auth.getUser(),
         sb.from('profiles').select('id, email, full_name, role, bio, start_date, phone').order('full_name'),
-        sb.from('tasks').select('id, assigned_to, status').is('parent_id', null),
+        sb.from('tasks').select('id, assigned_to, status, due_date, task_type').is('parent_id', null),
       ])
       if (me.user) {
         const { data: myProfile } = await sb.from('profiles').select('role').eq('id', me.user.id).single()
@@ -38,7 +39,13 @@ export default function EquipoPage() {
 
   if (loading) return <PageSkeleton />
 
-  const taskCount = (id: string) => tasks.filter(t => t.assigned_to === id && t.status !== 'completada').length
+  // Carga de trabajo: tareas abiertas partidas en vencidas / en progreso / pendientes al día
+  const workload = (id: string) => {
+    const open = tasks.filter(t => t.assigned_to === id && t.status !== 'completada' && t.status !== 'cancelada')
+    const vencidas   = open.filter(isOverdue).length
+    const enProgreso = open.filter(t => !isOverdue(t) && t.status === 'en_progreso').length
+    return { total: open.length, vencidas, enProgreso, pendientes: open.length - vencidas - enProgreso }
+  }
 
   return (
     <div className="p-4 lg:p-8">
@@ -52,7 +59,7 @@ export default function EquipoPage() {
         {profiles.map(p => {
           const initials  = p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
           const title     = ROLE_LABELS[p.email] ?? (p.role === 'admin' ? 'Administrador' : 'Consultor')
-          const pending   = taskCount(p.id)
+          const wl        = workload(p.id)
           return (
             <button key={p.id} onClick={() => setSelected(p)} className="text-left transition-all rounded-2xl p-5"
               style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}
@@ -67,20 +74,32 @@ export default function EquipoPage() {
                 </div>
               </div>
               {p.bio && <p className="text-xs mb-3 line-clamp-2" style={{ color: '#4a5a6b' }}>{p.bio}</p>}
-              <div className="flex items-center justify-between">
-                {p.start_date
-                  ? <span className="text-[10px]" style={{ color: '#b0bcc7' }}>
-                      Desde {new Date(p.start_date + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}
-                    </span>
-                  : <span />
-                }
-                {pending > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
-                    style={{ background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }}>
-                    {pending} tarea{pending !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
+              {/* Barra de carga: rojo vencidas · morado en progreso · azul pendientes */}
+              {wl.total > 0 ? (
+                <div className="mb-2">
+                  <div className="flex h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,40,80,0.07)' }}>
+                    {[
+                      { n: wl.vencidas,   color: '#ff6b6b' },
+                      { n: wl.enProgreso, color: '#a78bfa' },
+                      { n: wl.pendientes, color: '#40b5fa' },
+                    ].map((seg, i) => seg.n > 0 && (
+                      <div key={i} style={{ width: `${(seg.n / wl.total) * 100}%`, background: seg.color }} />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2.5 mt-1.5 text-[10px] font-semibold">
+                    {wl.vencidas > 0 && <span style={{ color: '#ff6b6b' }}>{wl.vencidas} vencida{wl.vencidas !== 1 ? 's' : ''}</span>}
+                    {wl.enProgreso > 0 && <span style={{ color: '#a78bfa' }}>{wl.enProgreso} en progreso</span>}
+                    {wl.pendientes > 0 && <span style={{ color: '#40b5fa' }}>{wl.pendientes} pendiente{wl.pendientes !== 1 ? 's' : ''}</span>}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[10px] mb-2 font-semibold" style={{ color: '#4ade80' }}>Al día · sin tareas abiertas</p>
+              )}
+              {p.start_date && (
+                <span className="text-[10px]" style={{ color: '#b0bcc7' }}>
+                  Desde {new Date(p.start_date + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}
+                </span>
+              )}
             </button>
           )
         })}
