@@ -291,7 +291,9 @@ export default function TareasList({
               }}>
 
               {/* Fila principal */}
-              <div className="px-5 py-4 flex items-center gap-4" style={{ opacity: isCompleta ? 0.65 : 1 }}>
+              {/* Toda la fila abre el detalle; los botones (check, iniciar, editar, borrar) mantienen su acción */}
+              <div className="px-5 py-4 flex items-center gap-4 cursor-pointer" style={{ opacity: isCompleta ? 0.65 : 1 }}
+                onClick={e => { if (!(e.target as HTMLElement).closest('button')) toggleExpand(t.id) }}>
                 <button
                   onClick={() => toggleComplete(t)}
                   disabled={completing === t.id}
@@ -363,13 +365,15 @@ export default function TareasList({
                     style={{ background: pr.bg, color: pr.color }}>
                     {pr.label}
                   </span>
-                  {isEnProgreso ? (
+                  {isEnProgreso && (
                     <span className="text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1.5"
                       style={{ background: 'rgba(167,139,250,0.14)', color: '#7c5cf5', border: '1px solid rgba(167,139,250,0.35)' }}>
                       <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#7c5cf5' }} />
                       En progreso
                     </span>
-                  ) : (
+                  )}
+                  {/* La fecha se ve siempre, también en progreso (el badge no la reemplaza) */}
+                  {t.due_date && (
                     <div className="flex items-center gap-1 text-xs"
                       style={{ color: isVencida ? '#ff6b6b' : isUrgente ? '#ffd93d' : '#86a2b2' }}>
                       {isVencida
@@ -409,6 +413,23 @@ export default function TareasList({
               {/* Detalle expandido */}
               {isOpen && (
                 <div className="px-5 pb-4 pt-1" style={{ borderTop: '1px solid rgba(0,40,80,0.06)' }}>
+                  {/* Datos clave de la tarea */}
+                  <div className="mt-3 ml-11 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { label: isRecurrente ? 'Próxima' : 'Vence', value: t.due_date ? formatDate(t.due_date) : '—',
+                        color: isVencida ? '#ff6b6b' : '#1a2e3b' },
+                      { label: 'Estado', value: isCompleta ? 'Completada' : isEnProgreso ? 'En progreso' : isVencida ? 'Vencida' : 'Pendiente',
+                        color: isCompleta ? '#4ade80' : isEnProgreso ? '#7c5cf5' : isVencida ? '#ff6b6b' : '#1a2e3b' },
+                      { label: 'Prioridad', value: pr.label, color: pr.color },
+                      { label: 'Creada', value: t.created_at ? formatDate(t.created_at) : '—', color: '#1a2e3b' },
+                    ].map(d => (
+                      <div key={d.label} className="rounded-xl px-3 py-2" style={{ background: '#f4f7fa' }}>
+                        <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: '#86a2b2' }}>{d.label}</p>
+                        <p className="text-sm font-medium" style={{ color: d.color }}>{d.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
                   <div className="mt-3 mb-3 ml-11">
                     <p className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: '#86a2b2' }}>Descripción</p>
                     {t.description
