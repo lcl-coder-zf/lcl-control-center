@@ -6,6 +6,7 @@ import { Menu } from 'lucide-react'
 import Image from 'next/image'
 import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
+import PerfilAviso from '@/components/equipo/PerfilAviso'
 import { puedeVerModulo } from '@/lib/modulos'
 import type { Profile } from '@/types'
 import type { ModuleAccess } from '@/app/(dashboard)/layout'
@@ -60,6 +61,9 @@ export default function AppShell({ profile, access, children }: { profile: Profi
         onClose={() => setOpen(false)}
         onToggle={() => setOpen(o => !o)}
       />
+
+      {/* "Completa tu perfil": una vez al entrar (o cuando un admin lo reenvía) */}
+      <PerfilAviso profile={profile} />
 
       {/* Bell fija solo en desktop */}
       {isDesktop && <NotificationBell />}

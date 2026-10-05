@@ -28,11 +28,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * contacto de emergencia van a `profile_private` (solo dueño + admin).
  * La fecha de ingreso solo es editable con `canEditStartDate` (admin / Laura).
  */
-export default function PerfilForm({ profile, canEditStartDate, onSaved, onCancel }: {
+export default function PerfilForm({ profile, canEditStartDate, onSaved, onCancel, cancelLabel = 'Cancelar' }: {
   profile: Row
   canEditStartDate: boolean
   onSaved: (updated: Row, priv: Row) => void
   onCancel?: () => void
+  cancelLabel?: string
 }) {
   const [form, setForm] = useState({
     phone:          profile.phone ?? '',
@@ -206,7 +207,7 @@ export default function PerfilForm({ profile, canEditStartDate, onSaved, onCance
         </button>
         {onCancel && (
           <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm font-semibold"
-            style={{ background: '#f4f7fa', color: '#6b8fa0', border: '1px solid rgba(0,40,80,0.10)' }}>Cancelar</button>
+            style={{ background: '#f4f7fa', color: '#6b8fa0', border: '1px solid rgba(0,40,80,0.10)' }}>{cancelLabel}</button>
         )}
       </div>
     </div>
