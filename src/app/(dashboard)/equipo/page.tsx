@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ROLE_LABELS } from '@/types'
-import { Users } from 'lucide-react'
+import { Users, Cake, PartyPopper, AlertTriangle } from 'lucide-react'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import EmployeePanel from '@/components/equipo/EmployeePanel'
 import { isOverdue } from '@/lib/tasks'
+import { diasACumple, cumpleLabel, aniversario } from '@/lib/perfil'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any
@@ -23,7 +24,7 @@ export default function EquipoPage() {
       const sb = createClient()
       const [{ data: me }, { data: p }, { data: t }] = await Promise.all([
         sb.auth.getUser(),
-        sb.from('profiles').select('id, email, full_name, role, bio, start_date, phone').order('full_name'),
+        sb.from('profiles').select('*').order('full_name'),
         sb.from('tasks').select('id, assigned_to, status, due_date, task_type').is('parent_id', null),
       ])
       if (me.user) {
@@ -47,6 +48,20 @@ export default function EquipoPage() {
     return { total: open.length, vencidas, enProgreso, pendientes: open.length - vencidas - enProgreso }
   }
 
+  // Franja superior: próximos cumpleaños / aniversarios (60 días) y quién va con más vencidas
+  const proximos = profiles.flatMap(p => {
+    const out: { id: string; nombre: string; dias: number; tipo: 'cumple' | 'aniv'; texto: string }[] = []
+    const c = diasACumple(p)
+    if (c !== null && c <= 60) out.push({ id: p.id + 'c', nombre: p.full_name, dias: c, tipo: 'cumple', texto: cumpleLabel(p) })
+    const a = aniversario(p)
+    if (a && a.dias <= 60) out.push({ id: p.id + 'a', nombre: p.full_name, dias: a.dias, tipo: 'aniv', texto: `${a.anos} año${a.anos !== 1 ? 's' : ''} en LCL` })
+    return out
+  }).sort((a, b) => a.dias - b.dias)
+  const conVencidas = profiles
+    .map(p => ({ nombre: p.full_name, n: workload(p.id).vencidas }))
+    .filter(x => x.n > 0).sort((a, b) => b.n - a.n).slice(0, 3)
+  const cuando = (d: number) => d === 0 ? 'hoy' : d === 1 ? 'mañana' : `en ${d} días`
+
   return (
     <div className="p-4 lg:p-8">
       <div className="mb-6">
@@ -55,11 +70,52 @@ export default function EquipoPage() {
         <p className="text-sm mt-1" style={{ color: '#6b8fa0' }}>{profiles.length} personas · Haz clic para ver el perfil completo</p>
       </div>
 
+      {(proximos.length > 0 || conVencidas.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-5">
+          <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-1.5" style={{ color: '#86a2b2' }}>
+              <PartyPopper className="w-3.5 h-3.5" /> Próximas fechas
+            </p>
+            {proximos.length === 0
+              ? <p className="text-xs" style={{ color: '#b0bcc7' }}>Nada en los próximos 60 días</p>
+              : <div className="space-y-1.5">
+                  {proximos.slice(0, 4).map(x => (
+                    <div key={x.id} className="flex items-center gap-2 text-xs">
+                      {x.tipo === 'cumple'
+                        ? <Cake className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#f472b6' }} />
+                        : <PartyPopper className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#40b5fa' }} />}
+                      <span className="font-semibold truncate" style={{ color: '#1a2e3b' }}>{x.nombre}</span>
+                      <span className="truncate" style={{ color: '#6b8fa0' }}>· {x.texto}</span>
+                      <span className="ml-auto flex-shrink-0 font-semibold" style={{ color: x.dias <= 7 ? '#f472b6' : '#86a2b2' }}>{cuando(x.dias)}</span>
+                    </div>
+                  ))}
+                </div>}
+          </div>
+          <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-1.5" style={{ color: '#86a2b2' }}>
+              <AlertTriangle className="w-3.5 h-3.5" /> Más tareas vencidas
+            </p>
+            {conVencidas.length === 0
+              ? <p className="text-xs font-semibold" style={{ color: '#4ade80' }}>Nadie tiene tareas vencidas 🎉</p>
+              : <div className="space-y-1.5">
+                  {conVencidas.map(x => (
+                    <div key={x.nombre} className="flex items-center gap-2 text-xs">
+                      <span className="font-semibold truncate" style={{ color: '#1a2e3b' }}>{x.nombre}</span>
+                      <span className="ml-auto font-bold flex-shrink-0" style={{ color: '#ff6b6b' }}>{x.n} vencida{x.n !== 1 ? 's' : ''}</span>
+                    </div>
+                  ))}
+                </div>}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {profiles.map(p => {
           const initials  = p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
           const title     = ROLE_LABELS[p.email] ?? (p.role === 'admin' ? 'Administrador' : 'Consultor')
           const wl        = workload(p.id)
+          const cumple    = diasACumple(p)
+          const aniv      = aniversario(p)
           return (
             <button key={p.id} onClick={() => setSelected(p)} className="text-left transition-all rounded-2xl p-5"
               style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.08)' }}
@@ -68,10 +124,22 @@ export default function EquipoPage() {
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-black flex-shrink-0"
                   style={{ background: 'rgba(64,181,250,0.15)', color: '#40b5fa' }}>{initials}</div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="font-bold text-sm truncate" style={{ color: '#1a2e3b' }}>{p.full_name}</p>
                   <p className="text-[11px] truncate" style={{ color: '#6b8fa0' }}>{title}</p>
                 </div>
+                {cumple !== null && cumple <= 7 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 flex-shrink-0"
+                    style={{ background: 'rgba(244,114,182,0.12)', color: '#db2777' }} title={`Cumpleaños ${cumpleLabel(p)}`}>
+                    <Cake className="w-3 h-3" />{cuando(cumple)}
+                  </span>
+                )}
+                {aniv && aniv.dias <= 7 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 flex-shrink-0"
+                    style={{ background: 'rgba(64,181,250,0.12)', color: '#40b5fa' }} title={`${aniv.anos} año(s) en LCL`}>
+                    <PartyPopper className="w-3 h-3" />{aniv.anos}a
+                  </span>
+                )}
               </div>
               {p.bio && <p className="text-xs mb-3 line-clamp-2" style={{ color: '#4a5a6b' }}>{p.bio}</p>}
               {/* Barra de carga: rojo vencidas · morado en progreso · azul pendientes */}
