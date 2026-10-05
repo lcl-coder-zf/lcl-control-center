@@ -5,9 +5,12 @@ import { createClient } from '@/lib/supabase/client'
 import { ROLE_LABELS } from '@/types'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { isOverdue } from '@/lib/tasks'
+import { cumpleLabel } from '@/lib/perfil'
+import PerfilForm from './PerfilForm'
 import {
   X, Clock, CheckCircle2, AlertTriangle, CalendarDays,
-  Gauge, Star, AlertCircle, Plus, Loader2, Phone, Pencil, Check, CreditCard, Building2,
+  Gauge, Star, AlertCircle, Plus, Loader2, Phone, Pencil, CreditCard, Building2,
+  Cake, GraduationCap, Lock, MapPin, HeartPulse,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,20 +59,11 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
   const [doneRecent, setDoneRecent] = useState<Row[]>([])
   const [loading,    setLoading]    = useState(true)
 
-  // Edit profile
+  // Edit profile (admin) — mismo formulario que "Mi cuenta"
   const [editMode,   setEditMode]   = useState(false)
-  const [editForm,   setEditForm]   = useState({ document_id: profile.document_id ?? '', bio: profile.bio ?? '', start_date: profile.start_date ?? '', phone: profile.phone ?? '' })
-  const [editSaving, setEditSaving] = useState(false)
   const [localProfile, setLocalProfile] = useState(profile)
-
-  async function saveProfile() {
-    setEditSaving(true)
-    const sb = createClient()
-    await sb.from('profiles').update(editForm).eq('id', profile.id)
-    setLocalProfile((p: Row) => ({ ...p, ...editForm }))
-    setEditMode(false)
-    setEditSaving(false)
-  }
+  // Ficha privada: la RLS solo la devuelve a admin (o al dueño)
+  const [priv,       setPriv]       = useState<Row | null>(null)
 
   // Forms
   const [addingEval,    setAddingEval]    = useState(false)
@@ -83,7 +77,7 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
       const sb = createClient()
       const today = new Date().toISOString().slice(0, 10)
       const hace28 = new Date(Date.now() - 28 * 86400000).toISOString()
-      const [t, e, i, ev, ll, done] = await Promise.all([
+      const [t, e, i, ev, ll, done, pv] = await Promise.all([
         sb.from('tasks').select('id, title, status, due_date, priority, task_type, companies(name), task_companies(companies(name))')
           .eq('assigned_to', profile.id).is('parent_id', null)
           .neq('status', 'completada').order('due_date'),
@@ -100,6 +94,9 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
         sb.from('tasks').select('id, completed_at')
           .eq('assigned_to', profile.id).is('parent_id', null)
           .eq('status', 'completada').gte('completed_at', hace28),
+        isAdmin
+          ? sb.from('profile_private').select('*').eq('profile_id', profile.id).maybeSingle()
+          : Promise.resolve({ data: null }),
       ])
       setTasks(t.data ?? [])
       setEvents(e.data ?? [])
@@ -107,6 +104,7 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
       setEvals(ev.data ?? [])
       setLlamados((ll as { data: Row[] | null }).data ?? [])
       setDoneRecent(done.data ?? [])
+      setPriv((pv as { data: Row | null }).data)
       setLoading(false)
     }
     load()
@@ -193,44 +191,11 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
             </div>
           </div>
 
-          {/* Edit form */}
           {editMode && isAdmin && (
-            <div className="mb-3 rounded-xl p-3 space-y-2" style={{ background: '#f4f7fa', border: '1px solid rgba(64,181,250,0.2)' }}>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Cédula</label>
-                  <input value={editForm.document_id} onChange={e => setEditForm(p => ({ ...p, document_id: e.target.value }))}
-                    placeholder="Ej: 1234567890" className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none"
-                    style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Teléfono</label>
-                  <input value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))}
-                    placeholder="Ej: 3001234567" className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none"
-                    style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Fecha de ingreso</label>
-                <input type="date" value={editForm.start_date} onChange={e => setEditForm(p => ({ ...p, start_date: e.target.value }))}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none"
-                  style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
-              </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: '#86a2b2' }}>Descripción breve</label>
-                <textarea value={editForm.bio} onChange={e => setEditForm(p => ({ ...p, bio: e.target.value }))}
-                  placeholder="Ej: Experta en auditorías ISO y BASC, lleva 3 años en el equipo." rows={2}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg outline-none resize-none"
-                  style={{ background: '#fff', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
-              </div>
-              <div className="flex gap-2">
-                <button onClick={saveProfile} disabled={editSaving}
-                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
-                  style={{ background: '#40b5fa', color: '#fff' }}>
-                  {editSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Check className="w-3 h-3" />Guardar</>}
-                </button>
-                <button onClick={() => setEditMode(false)} className="px-3 py-1.5 rounded-lg text-xs" style={{ background: '#e2e8f0', color: '#6b8fa0' }}>Cancelar</button>
-              </div>
+            <div className="mb-3 rounded-xl p-3" style={{ background: '#fafbfc', border: '1px solid rgba(64,181,250,0.2)' }}>
+              <PerfilForm profile={localProfile} canEditStartDate
+                onSaved={(p, pv) => { setLocalProfile(p); setPriv(pv); setEditMode(false) }}
+                onCancel={() => setEditMode(false)} />
             </div>
           )}
 
@@ -239,9 +204,14 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
           )}
 
           <div className="flex flex-wrap gap-3">
-            {localProfile.document_id && (
+            {localProfile.profesion && (
               <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}>
-                <CreditCard className="w-3 h-3" />{localProfile.document_id}
+                <GraduationCap className="w-3 h-3" />{localProfile.profesion}
+              </span>
+            )}
+            {localProfile.birth_month && localProfile.birth_day && (
+              <span className="text-[11px] flex items-center gap-1" style={{ color: '#6b8fa0' }}>
+                <Cake className="w-3 h-3" />{cumpleLabel(localProfile)}
               </span>
             )}
             {localProfile.start_date && (
@@ -257,6 +227,31 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
               </span>
             )}
           </div>
+
+          {(localProfile.especialidades ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {localProfile.especialidades.map((e: string) => (
+                <span key={e} className="text-[11px] px-2 py-0.5 rounded-lg font-medium"
+                  style={{ background: 'rgba(64,181,250,0.10)', color: '#2a9ae0' }}>{e}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Ficha privada (solo admin) */}
+          {isAdmin && !editMode && priv && (priv.cedula || priv.direccion || priv.emergencia_nombre) && (
+            <div className="mt-3 rounded-xl px-3 py-2 space-y-1" style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)' }}>
+              <p className="text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1" style={{ color: '#a78bfa' }}>
+                <Lock className="w-3 h-3" /> Privado
+              </p>
+              {priv.cedula && <p className="text-[11px] flex items-center gap-1.5" style={{ color: '#4a5a6b' }}><CreditCard className="w-3 h-3" />{priv.cedula}</p>}
+              {priv.direccion && <p className="text-[11px] flex items-center gap-1.5" style={{ color: '#4a5a6b' }}><MapPin className="w-3 h-3" />{priv.direccion}</p>}
+              {priv.emergencia_nombre && (
+                <p className="text-[11px] flex items-center gap-1.5" style={{ color: '#4a5a6b' }}>
+                  <HeartPulse className="w-3 h-3" />Emergencia: {priv.emergencia_nombre}{priv.emergencia_telefono && ` · ${priv.emergencia_telefono}`}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Stats */}
           {!loading && (
