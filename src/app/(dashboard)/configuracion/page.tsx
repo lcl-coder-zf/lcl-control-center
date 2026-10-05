@@ -8,9 +8,11 @@ import { PageSkeleton } from '@/components/ui/Skeleton'
 import {
   Shield, Eye, EyeOff, Loader2, Check, Power,
   LayoutDashboard, UserCircle, Pencil, CreditCard, Phone, CalendarDays,
-  Bell, UserPlus, Plus, Trash2,
+  Bell, UserPlus, Plus, Trash2, Cake, GraduationCap,
 } from 'lucide-react'
 import PushToggle from '@/components/ui/PushToggle'
+import PerfilForm from '@/components/equipo/PerfilForm'
+import { completitud } from '@/lib/perfil'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = any
@@ -60,8 +62,7 @@ export default function ConfiguracionPage() {
 
   // Mi perfil
   const [editMode,   setEditMode]   = useState(false)
-  const [editForm,   setEditForm]   = useState({ document_id: '', phone: '', bio: '' })
-  const [editSaving, setEditSaving] = useState(false)
+  const [miPriv,     setMiPriv]     = useState<Row | null>(null)
   const [editSaved,  setEditSaved]  = useState(false)
 
   // Crear usuario
@@ -92,20 +93,16 @@ export default function ConfiguracionPage() {
     const { data: { user } } = await supabase.auth.getUser()
     const { data: mine } = await supabase.from('profiles').select('*').eq('id', user?.id ?? '').single()
     setMe(mine)
-    setEditForm({ document_id: mine?.document_id ?? '', phone: mine?.phone ?? '', bio: mine?.bio ?? '' })
+    const { data: priv } = await supabase.from('profile_private').select('*').eq('profile_id', user?.id ?? '').maybeSingle()
+    setMiPriv(priv ?? { cedula: mine?.document_id ?? null })
     if (mine?.role === 'admin') { try { await loadAdmin() } catch (e) { setErr((e as Error).message) } }
     setLoading(false)
   }, [loadAdmin])
 
   useEffect(() => { load() }, [load])
 
-  async function saveMiPerfil() {
-    if (!me) return
-    setEditSaving(true)
-    const supabase = createClient()
-    await supabase.from('profiles').update(editForm).eq('id', me.id)
-    setMe((p: Row) => ({ ...p, ...editForm }))
-    setEditSaving(false); setEditMode(false)
+  function onPerfilGuardado(updated: Row, priv: Row) {
+    setMe(updated); setMiPriv(priv); setEditMode(false)
     setEditSaved(true); setTimeout(() => setEditSaved(false), 2000)
   }
 
@@ -231,38 +228,42 @@ export default function ConfiguracionPage() {
             )}
           </div>
           {editMode ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider block mb-1" style={{ color: '#86a2b2' }}>Cédula</label>
-                  <input value={editForm.document_id} onChange={e => setEditForm(p => ({ ...p, document_id: e.target.value }))} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider block mb-1" style={{ color: '#86a2b2' }}>Teléfono</label>
-                  <input value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
-                </div>
+            <PerfilForm profile={me} canEditStartDate={isAdmin} onSaved={onPerfilGuardado} onCancel={() => setEditMode(false)} />
+          ) : (() => {
+            const pct = completitud(me, miPriv ?? {})
+            const chip = (ok: boolean): React.CSSProperties => ({ background: '#f4f7fa', color: ok ? '#6b8fa0' : '#b6c4ce' })
+            return (
+              <div className="flex flex-wrap gap-2">
+                {pct < 100 && (
+                  <button onClick={() => setEditMode(true)} className="w-full mb-2 rounded-xl px-4 py-3 text-left flex items-center gap-3"
+                    style={{ background: 'rgba(64,181,250,0.08)', border: '1px solid rgba(64,181,250,0.25)' }}>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold" style={{ color: '#1a2e3b' }}>Completa tu perfil · {pct}%</p>
+                      <div className="h-1.5 mt-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,40,80,0.07)' }}>
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#40b5fa' }} />
+                      </div>
+                    </div>
+                    <Pencil className="w-4 h-4 flex-shrink-0" style={{ color: '#40b5fa' }} />
+                  </button>
+                )}
+                {me.bio && <p className="text-sm w-full mb-1" style={{ color: '#4a5a6b' }}>{me.bio}</p>}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={chip(!!me.profesion)}><GraduationCap className="w-3 h-3" />{me.profesion || 'Profesión sin registrar'}</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={chip(!!miPriv?.cedula)}><CreditCard className="w-3 h-3" />{miPriv?.cedula || 'Cédula sin registrar'}</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={chip(!!me.phone)}><Phone className="w-3 h-3" />{me.phone || 'Teléfono sin registrar'}</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={chip(!!me.birth_month)}><Cake className="w-3 h-3" />{me.birth_month ? new Date(2000, me.birth_month - 1, me.birth_day).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' }) : 'Cumpleaños sin registrar'}</span>
+                {me.start_date && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={{ background: '#f4f7fa', color: '#6b8fa0' }}><CalendarDays className="w-3 h-3" />Desde {new Date(me.start_date + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}</span>
+                )}
+                {(me.especialidades ?? []).length > 0 && (
+                  <div className="w-full flex flex-wrap gap-1.5 mt-1">
+                    {me.especialidades.map((e: string) => (
+                      <span key={e} className="text-[11px] px-2 py-0.5 rounded-lg font-medium" style={{ background: 'rgba(64,181,250,0.10)', color: '#2a9ae0' }}>{e}</span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-wider block mb-1" style={{ color: '#86a2b2' }}>Bio</label>
-                <textarea value={editForm.bio} onChange={e => setEditForm(p => ({ ...p, bio: e.target.value }))} rows={3} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{ background: '#f4f7fa', border: '1px solid rgba(0,40,80,0.10)', color: '#1a2e3b' }} />
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={saveMiPerfil} disabled={editSaving} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ background: '#40b5fa', border: 'none', cursor: 'pointer' }}>
-                  {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Guardar
-                </button>
-                <button onClick={() => setEditMode(false)} className="px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: '#f4f7fa', color: '#6b8fa0', border: '1px solid rgba(0,40,80,0.10)', cursor: 'pointer' }}>Cancelar</button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {me.bio && <p className="text-sm w-full mb-1" style={{ color: '#4a5a6b' }}>{me.bio}</p>}
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={{ background: '#f4f7fa', color: me.document_id ? '#6b8fa0' : '#b6c4ce' }}><CreditCard className="w-3 h-3" />{me.document_id || 'Cédula sin registrar'}</span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={{ background: '#f4f7fa', color: me.phone ? '#6b8fa0' : '#b6c4ce' }}><Phone className="w-3 h-3" />{me.phone || 'Teléfono sin registrar'}</span>
-              {me.start_date && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]" style={{ background: '#f4f7fa', color: '#6b8fa0' }}><CalendarDays className="w-3 h-3" />Desde {new Date(me.start_date + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}</span>
-              )}
-            </div>
-          )}
+            )
+          })()}
         </div>
       </section>
 
