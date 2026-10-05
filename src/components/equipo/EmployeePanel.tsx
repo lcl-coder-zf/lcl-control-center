@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ROLE_LABELS } from '@/types'
 import { formatDate, daysUntil } from '@/lib/utils'
+import { isOverdue } from '@/lib/tasks'
 import {
   X, Clock, CheckCircle2, AlertTriangle, CalendarDays,
-  Gauge, Star, AlertCircle, Plus, Loader2, Phone, Pencil, Check, CreditCard,
+  Gauge, Star, AlertCircle, Plus, Loader2, Phone, Pencil, Check, CreditCard, Building2,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -52,6 +53,7 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
   const [indicators, setIndicators] = useState<Row[]>([])
   const [evals,      setEvals]      = useState<Row[]>([])
   const [llamados,   setLlamados]   = useState<Row[]>([])
+  const [doneRecent, setDoneRecent] = useState<Row[]>([])
   const [loading,    setLoading]    = useState(true)
 
   // Edit profile
@@ -80,8 +82,9 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
     async function load() {
       const sb = createClient()
       const today = new Date().toISOString().slice(0, 10)
-      const [t, e, i, ev, ll] = await Promise.all([
-        sb.from('tasks').select('id, title, status, due_date, priority, companies(name)')
+      const hace28 = new Date(Date.now() - 28 * 86400000).toISOString()
+      const [t, e, i, ev, ll, done] = await Promise.all([
+        sb.from('tasks').select('id, title, status, due_date, priority, task_type, companies(name), task_companies(companies(name))')
           .eq('assigned_to', profile.id).is('parent_id', null)
           .neq('status', 'completada').order('due_date'),
         sb.from('events').select('id, title, event_date, event_type')
@@ -94,12 +97,16 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
         isAdmin
           ? sb.from('llamados_atencion').select('*').eq('profile_id', profile.id).order('date', { ascending: false })
           : Promise.resolve({ data: [] }),
+        sb.from('tasks').select('id, completed_at')
+          .eq('assigned_to', profile.id).is('parent_id', null)
+          .eq('status', 'completada').gte('completed_at', hace28),
       ])
       setTasks(t.data ?? [])
       setEvents(e.data ?? [])
       setIndicators(i.data ?? [])
       setEvals(ev.data ?? [])
       setLlamados((ll as { data: Row[] | null }).data ?? [])
+      setDoneRecent(done.data ?? [])
       setLoading(false)
     }
     load()
@@ -131,8 +138,26 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
     setSaving(false)
   }
 
-  const pending   = tasks.filter(t => t.status !== 'completada' && daysUntil(t.due_date) >= 0).length
-  const overdue   = tasks.filter(t => daysUntil(t.due_date) < 0).length
+  // Mismo criterio de "vencida" que Tareas (las recurrentes no vencen)
+  const overdue   = tasks.filter(isOverdue).length
+  const pending   = tasks.length - overdue
+
+  // Clientes que atiende: sale solo de sus tareas abiertas (principal + multi-cliente)
+  const clientCount = new Map<string, number>()
+  for (const t of tasks) {
+    const names = new Set<string>()
+    if (t.companies?.name) names.add(t.companies.name)
+    for (const tc of t.task_companies ?? []) if (tc.companies?.name) names.add(tc.companies.name)
+    names.forEach(n => clientCount.set(n, (clientCount.get(n) ?? 0) + 1))
+  }
+  const clients = [...clientCount.entries()].sort((a, b) => b[1] - a[1])
+
+  // Tareas completadas por semana, últimas 4 (la última barra = esta semana)
+  const weeks = [3, 2, 1, 0].map(w => doneRecent.filter(d => {
+    const age = (Date.now() - new Date(d.completed_at).getTime()) / 86400000
+    return age >= w * 7 && age < (w + 1) * 7
+  }).length)
+  const maxWeek = Math.max(1, ...weeks)
 
   return (
     <>
@@ -239,13 +264,27 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
               {[
                 { label: 'Pendientes', value: pending,       color: '#40b5fa' },
                 { label: 'Vencidas',   value: overdue,       color: '#ff6b6b' },
-                { label: 'Indicadores',value: indicators.length, color: '#a78bfa' },
+                { label: 'Hechas 4 sem', value: doneRecent.length, color: '#4ade80' },
               ].map(s => (
                 <div key={s.label} className="rounded-xl px-3 py-2 text-center" style={{ background: '#f4f7fa' }}>
                   <p className="text-base font-black" style={{ color: s.color }}>{s.value}</p>
                   <p className="text-[10px] uppercase tracking-wide" style={{ color: '#86a2b2' }}>{s.label}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Ritmo: completadas por semana */}
+          {!loading && (
+            <div className="mt-3 flex items-end gap-3">
+              <p className="text-[10px] uppercase tracking-wide font-semibold pb-0.5" style={{ color: '#86a2b2' }}>Ritmo</p>
+              <div className="flex-1 flex items-end gap-1.5 h-8">
+                {weeks.map((n, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full" title={`${n} completada${n !== 1 ? 's' : ''} · ${i === 3 ? 'esta semana' : `hace ${3 - i} sem`}`}>
+                    <div className="w-full rounded-md" style={{ height: `${Math.max(8, (n / maxWeek) * 100)}%`, background: n === 0 ? 'rgba(0,40,80,0.07)' : i === 3 ? '#4ade80' : 'rgba(74,222,128,0.45)' }} />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -262,7 +301,7 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
                   ? <Empty text="Sin tareas activas" />
                   : tasks.slice(0, 6).map(t => {
                     const days = daysUntil(t.due_date)
-                    const vencida = days < 0
+                    const vencida = isOverdue(t)
                     return (
                       <div key={t.id} className="flex items-center gap-2.5 rounded-xl px-3 py-2"
                         style={{ background: vencida ? 'rgba(255,107,107,0.04)' : '#f4f7fa', border: `1px solid ${vencida ? 'rgba(255,107,107,0.15)' : 'rgba(0,40,80,0.05)'}` }}>
@@ -281,11 +320,24 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
                 }
               </Section>
 
-              {/* Próximos eventos */}
+              {/* Clientes que atiende */}
+              {clients.length > 0 && (
+                <Section title="Clientes que atiende" icon={<Building2 className="w-3.5 h-3.5" />} count={clients.length}>
+                  <div className="flex flex-wrap gap-1.5">
+                    {clients.map(([name, n]) => (
+                      <span key={name} className="text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5"
+                        style={{ background: 'rgba(52,211,153,0.08)', color: '#059669', border: '1px solid rgba(52,211,153,0.2)' }}>
+                        {name}<span className="font-bold opacity-70">{n}</span>
+                      </span>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Próximos eventos (solo si hay) */}
+              {events.length > 0 && (
               <Section title="Próximos eventos" icon={<CalendarDays className="w-3.5 h-3.5" />} count={events.length}>
-                {events.length === 0
-                  ? <Empty text="Sin eventos próximos" />
-                  : events.map(e => (
+                {events.map(e => (
                     <div key={e.id} className="flex items-center gap-2.5 rounded-xl px-3 py-2" style={{ background: '#f4f7fa' }}>
                       <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#40b5fa' }} />
                       <div className="flex-1 min-w-0">
@@ -293,15 +345,14 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
                       </div>
                       <span className="text-[10px]" style={{ color: '#86a2b2' }}>{formatDate(e.event_date)}</span>
                     </div>
-                  ))
-                }
+                  ))}
               </Section>
+              )}
 
-              {/* Indicadores */}
+              {/* Indicadores (solo si hay) */}
+              {indicators.length > 0 && (
               <Section title="Indicadores pendientes" icon={<Gauge className="w-3.5 h-3.5" />} count={indicators.length}>
-                {indicators.length === 0
-                  ? <Empty text="Sin indicadores pendientes" />
-                  : indicators.map(i => {
+                {indicators.map(i => {
                     const days = daysUntil(i.due_date)
                     return (
                       <div key={i.id} className="flex items-center gap-2.5 rounded-xl px-3 py-2" style={{ background: '#f4f7fa' }}>
@@ -314,11 +365,12 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
                         </span>
                       </div>
                     )
-                  })
-                }
+                  })}
               </Section>
+              )}
 
-              {/* Evaluaciones */}
+              {/* Evaluaciones (los no-admin solo la ven si hay alguna) */}
+              {(isAdmin || evals.length > 0) && (
               <Section title="Evaluaciones" icon={<Star className="w-3.5 h-3.5" />} count={evals.length}
                 action={isAdmin ? { label: 'Nueva', onClick: () => setAddingEval(v => !v) } : undefined}>
                 {isAdmin && addingEval && (
@@ -363,6 +415,7 @@ export default function EmployeePanel({ profile, currentUserRole, onClose }: Pro
                   </div>
                 ))}
               </Section>
+              )}
 
               {/* Llamados de atención (admin only) */}
               {isAdmin && (
