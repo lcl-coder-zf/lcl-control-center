@@ -6,6 +6,7 @@ import { ROLE_LABELS } from '@/types'
 import { Users, Cake, PartyPopper, AlertTriangle } from 'lucide-react'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import EmployeePanel from '@/components/equipo/EmployeePanel'
+import SeguimientoPerfiles from '@/components/equipo/SeguimientoPerfiles'
 import { isOverdue } from '@/lib/tasks'
 import { diasACumple, cumpleLabel, aniversario, completitud } from '@/lib/perfil'
 
@@ -85,6 +86,11 @@ export default function EquipoPage() {
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#1a2e3b' }}>Equipo</h1>
         <p className="text-sm mt-1" style={{ color: '#6b8fa0' }}>{profiles.length} personas · Haz clic para ver el perfil completo</p>
       </div>
+
+      {currentRole === 'admin' && (
+        <SeguimientoPerfiles profiles={profiles}
+          onUpdated={(id, patch) => setProfiles(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p))} />
+      )}
 
       {(proximos.length > 0 || conVencidas.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-5">
